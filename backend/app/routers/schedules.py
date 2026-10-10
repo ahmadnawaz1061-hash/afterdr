@@ -51,11 +51,13 @@ def _dose_response(
     *,
     medicine_name: str,
     local_time: str,
+    dose_text: str | None = None,
 ) -> ScheduleDoseResponse:
     return ScheduleDoseResponse(
         id=dose.id,
         prescription_item_id=dose.prescription_item_id,
         medicine_name=medicine_name,
+        dose=dose_text,
         scheduled_at=dose.scheduled_at,
         local_time=local_time,
         status=dose.status,
@@ -134,6 +136,7 @@ def get_schedule(
                 dose,
                 medicine_name=view.item.medicine_name,
                 local_time=dose.scheduled_at.astimezone(zone).strftime("%H:%M"),
+                dose_text=view.item.dose,
             ))
         course_start = view.course_start
         course_end = view.course_end
@@ -209,6 +212,7 @@ def get_today_schedule(
             result.dose,
             medicine_name=result.medicine_name,
             local_time=result.local_time,
+            dose_text=result.dose_text,
         )
         for result in doses
     ]
@@ -236,6 +240,7 @@ def update_schedule_dose(
     return _dose_response(
         dose,
         medicine_name=item.medicine_name,
+        dose_text=item.dose,
         local_time=dose.scheduled_at.astimezone(
             ZoneInfo("Asia/Karachi")
         ).strftime("%H:%M"),

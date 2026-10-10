@@ -171,6 +171,7 @@ class ScheduleDoseResponse(ContractModel):
     id: int
     prescription_item_id: int
     medicine_name: str
+    dose: str | None = None
     scheduled_at: datetime
     local_time: str
     status: DoseStatus

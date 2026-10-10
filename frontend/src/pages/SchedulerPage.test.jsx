@@ -34,7 +34,8 @@ function scheduleData() {
       course_end: today,
       days: [{ date: today, doses: [{
         id: 31, prescription_item_id: 9, medicine_name: 'Course medicine',
-        scheduled_at: `${today}T04:00:00Z`, local_time: '09:00', status: 'pending',
+        scheduled_at: '2099-10-10T04:00:00Z', local_time: '09:00', status: 'pending',
+        dose: '1 tablet',
         taken_at: null, is_demo: false,
       }] }],
     }],
@@ -59,7 +60,7 @@ it('loads generated doses, edits times, and marks a dose', async () => {
   expect(screen.getByText('Loading your schedule…')).toBeTruthy();
   expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
   expect(screen.getByText(/Schedule created automatically/)).toBeTruthy();
-  expect(screen.getByText(/Reminders work inside this app only/)).toBeTruthy();
+  expect(screen.getByText(/An unanswered dose is marked Missed after 30 minutes/)).toBeTruthy();
   const summary = screen.getByRole('region', { name: 'Today’s dose summary' });
   expect(within(summary).getByText('total').previousSibling.textContent).toBe('1');
 
@@ -67,9 +68,21 @@ it('loads generated doses, edits times, and marks a dose', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Save new times' }));
   expect(regenerateScheduleItem).toHaveBeenCalledWith(9, ['10:00', '21:00'], 'Asia/Karachi');
 
-  fireEvent.click(screen.getByRole('button', { name: 'taken' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: /Course medicine/ }));
   expect(await screen.findByText('Taken')).toBeTruthy();
   expect(updateScheduleDose).toHaveBeenCalledWith(31, 'taken');
+});
+
+it('automatically marks an unanswered overdue dose as missed', async () => {
+  const data = scheduleData();
+  data.items[0].days[0].doses[0].scheduled_at = new Date(Date.now() - (31 * 60 * 1000)).toISOString();
+  getPrescriptionSchedule.mockResolvedValue(data);
+
+  renderPage();
+
+  expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
+  expect(updateScheduleDose).toHaveBeenCalledWith(31, 'missed');
+  expect(await screen.findByText('Missed')).toBeTruthy();
 });
 
 it('shows a retryable error', async () => {

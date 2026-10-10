@@ -14,6 +14,7 @@ from app.schemas import ScheduleCreateRequest
 
 
 DEMO_PATIENT_ID = 1
+OVERDUE_GRACE = timedelta(minutes=30)
 
 
 class ScheduleServiceError(RuntimeError):
@@ -54,6 +55,7 @@ class ScheduleCreationResult:
 class TodayDose:
     dose: ScheduleDose
     medicine_name: str
+    dose_text: str | None
     local_time: str
 
 
@@ -181,6 +183,46 @@ def _insert_occurrences(
         for scheduled_at in new_occurrences
     ])
     return len(new_occurrences)
+
+
+def mark_overdue_doses(
+    session: Session,
+    *,
+    patient_id: int | None = None,
+    prescription_id: int | None = None,
+    now_utc: datetime | None = None,
+) -> int:
+    """Persist unanswered doses as missed after the response window."""
+    current_utc = now_utc or datetime.now(datetime_timezone.utc)
+    if current_utc.tzinfo is None:
+        raise ValueError("now_utc must include a timezone")
+    cutoff = current_utc.astimezone(datetime_timezone.utc) - OVERDUE_GRACE
+    statement = (
+        select(ScheduleDose)
+        .join(PrescriptionItem, ScheduleDose.prescription_item_id == PrescriptionItem.id)
+        .join(Prescription, PrescriptionItem.prescription_id == Prescription.id)
+        .where(
+            ScheduleDose.status == "pending",
+            ScheduleDose.scheduled_at < cutoff,
+        )
+    )
+    if patient_id is not None:
+        statement = statement.where(Prescription.patient_id == patient_id)
+    if prescription_id is not None:
+        statement = statement.where(Prescription.id == prescription_id)
+    overdue = list(session.exec(statement).all())
+    if not overdue:
+        return 0
+    try:
+        for dose in overdue:
+            dose.status = "missed"
+            dose.taken_at = None
+            session.add(dose)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise ScheduleSaveError("Overdue doses could not be updated") from exc
+    return len(overdue)
 
 
 def auto_schedule_prescription(
@@ -324,6 +366,7 @@ def get_prescription_schedule(
         raise UnconfirmedPrescriptionError(
             "A schedule can only be viewed for a confirmed prescription"
         )
+    mark_overdue_doses(session, prescription_id=prescription_id)
     zone = timezone_for_name(timezone)
     items = list(session.exec(
         select(PrescriptionItem)
@@ -421,6 +464,7 @@ def get_today_doses(
     current_utc = now_utc or datetime.now(datetime_timezone.utc)
     if current_utc.tzinfo is None:
         raise ValueError("now_utc must include a timezone")
+    mark_overdue_doses(session, patient_id=patient_id, now_utc=current_utc)
 
     local_date = current_utc.astimezone(zone).date()
     utc_start = datetime.combine(local_date, time.min, tzinfo=zone).astimezone(
@@ -451,6 +495,7 @@ def get_today_doses(
         TodayDose(
             dose=dose,
             medicine_name=item.medicine_name,
+            dose_text=item.dose,
             local_time=dose.scheduled_at.astimezone(zone).strftime("%H:%M"),
         )
         for dose, item in rows

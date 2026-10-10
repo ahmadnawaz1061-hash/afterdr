@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Plus, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, CalendarClock, Check, Plus, RotateCcw } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import ErrorMessage from '../components/common/ErrorMessage';
 import LoadingState from '../components/common/LoadingState';
@@ -7,6 +7,7 @@ import StatusBadge, { DemoBadge } from '../components/common/StatusBadge';
 import { getPrescriptionSchedule, regenerateScheduleItem, updateScheduleDose, USE_MOCKS } from '../services/api';
 
 const TIMEZONE = 'Asia/Karachi';
+const RESPONSE_WINDOW_MS = 30 * 60 * 1000;
 
 function localToday() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -21,6 +22,9 @@ export default function SchedulerPage() {
   const [edits, setEdits] = useState({});
   const [savingItem, setSavingItem] = useState(null);
   const [notice, setNotice] = useState('');
+  const [dueDose, setDueDose] = useState(null);
+  const notifiedDoseIds = useRef(new Set());
+  const updatingDoseIds = useRef(new Set());
 
   const load = useCallback(async () => {
     setState((current) => ({ status: 'loading', data: current.data, error: null }));
@@ -95,16 +99,21 @@ export default function SchedulerPage() {
   }
 
   async function setDoseStatus(dose, status) {
+    if (updatingDoseIds.current.has(dose.id)) return;
+    updatingDoseIds.current.add(dose.id);
     const previous = dose;
     replaceDose(dose.id, { ...dose, status, taken_at: status === 'taken' ? new Date().toISOString() : null });
     setNotice(`Updating ${dose.medicine_name}…`);
     try {
       const updated = await updateScheduleDose(dose.id, status);
       replaceDose(dose.id, updated);
+      if (status !== 'pending' && dueDose?.id === dose.id) setDueDose(null);
       setNotice(`${dose.medicine_name} marked ${status}.`);
     } catch (error) {
       replaceDose(dose.id, previous);
       setNotice(error?.response?.data?.detail || error.message || 'The dose status could not be updated.');
+    } finally {
+      updatingDoseIds.current.delete(dose.id);
     }
   }
 
@@ -134,6 +143,50 @@ export default function SchedulerPage() {
     };
   }, [groupedDays]);
 
+  const allDoses = useMemo(
+    () => groupedDays.flatMap(([, doses]) => doses),
+    [groupedDays],
+  );
+
+  useEffect(() => {
+    function checkDueDoses() {
+      const now = Date.now();
+      for (const dose of allDoses) {
+        if (dose.status !== 'pending') continue;
+        const elapsed = now - new Date(dose.scheduled_at).getTime();
+        if (elapsed > RESPONSE_WINDOW_MS) {
+          setDoseStatus(dose, 'missed');
+          continue;
+        }
+        if (elapsed >= 0 && !notifiedDoseIds.current.has(dose.id)) {
+          notifiedDoseIds.current.add(dose.id);
+          setDueDose(dose);
+          setNotice(`It is time to take ${dose.medicine_name}.`);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Medicine reminder', {
+              body: `${dose.medicine_name} is due now${dose.dose ? `: ${dose.dose}` : ''}.`,
+              tag: `medcare-dose-${dose.id}`,
+            });
+          }
+        }
+      }
+    }
+    checkDueDoses();
+    const interval = window.setInterval(checkDueDoses, 30000);
+    return () => window.clearInterval(interval);
+  }, [allDoses]);
+
+  async function enableNotifications() {
+    if (!('Notification' in window)) {
+      setNotice('Browser notifications are not supported here. In-app reminders will still appear.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotice(permission === 'granted'
+      ? 'Browser reminders enabled while this app is open.'
+      : 'Browser reminders were not enabled. In-app reminders will still appear.');
+  }
+
   return <div className="space-y-8">
     <header className="max-w-3xl">
       <p className="mb-3 text-xs font-bold tracking-[0.18em] text-teal-700 uppercase">Your care workspace</p>
@@ -144,7 +197,16 @@ export default function SchedulerPage() {
     <p className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-medium leading-6 text-sky-950">
       Schedule created automatically from your confirmed prescription. Times are suggestions. Edit them if they don't suit you.
     </p>
-    <p className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">Reminders work inside this app only. Keep the page open, as notifications are not sent when it is closed.</p>
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
+      <p>Reminders work inside this app only. Keep the page open, as notifications are not sent when it is closed. An unanswered dose is marked Missed after 30 minutes.</p>
+      <button type="button" onClick={enableNotifications} className="button-secondary mt-3 gap-2 bg-white"><Bell size={16} aria-hidden="true" />Enable browser reminders</button>
+    </div>
+    {dueDose && <section className="rounded-2xl border-2 border-teal-600 bg-teal-50 p-5" role="alert" aria-live="assertive">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div><p className="text-xs font-bold uppercase tracking-wide text-teal-800">Medicine due now</p><h2 className="mt-1 text-lg font-bold text-slate-900">{dueDose.medicine_name}</h2><p className="mt-1 text-sm text-slate-700">{dueDose.dose || 'Follow the reviewed prescription instructions.'}</p></div>
+        <button type="button" onClick={() => setDoseStatus(dueDose, 'taken')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-800 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-900"><Check size={18} aria-hidden="true" />Mark as taken</button>
+      </div>
+    </section>}
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>
     {notice && <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" aria-hidden="true">{notice}</p>}
 
@@ -195,10 +257,12 @@ export default function SchedulerPage() {
           {groupedDays.length === 0 ? <p className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">No doses have been generated yet. Set reminder times above.</p> : groupedDays.map(([day, doses]) => <article key={day} className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
             <h3 className="font-semibold text-slate-900">{day === localToday() ? `Today · ${day}` : day}</h3>
             <ul className="mt-4 divide-y divide-slate-200">{doses.map((dose) => <li key={dose.id} className="py-4 first:pt-0 last:pb-0">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-medium text-slate-900">{dose.medicine_name}</p><p className="mt-1 text-sm text-slate-600"><time>{dose.local_time}</time></p></div><StatusBadge status={dose.status} /></div>
-              <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label={`Set status for ${dose.medicine_name} at ${dose.local_time}`}>
-                {['taken', 'missed', 'pending'].map((status) => <button key={status} type="button" aria-pressed={dose.status === status} onClick={() => setDoseStatus(dose, status)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-2 text-xs font-semibold capitalize text-slate-700 hover:bg-slate-50 aria-pressed:border-teal-700 aria-pressed:bg-teal-50 aria-pressed:text-teal-900">{status}</button>)}
+              <div className="flex items-start gap-3">
+                <input id={`dose-check-${dose.id}`} type="checkbox" checked={dose.status === 'taken'} onChange={(event) => setDoseStatus(dose, event.target.checked ? 'taken' : 'pending')} className="mt-1 size-6 shrink-0 rounded border-slate-500 accent-teal-700" />
+                <label htmlFor={`dose-check-${dose.id}`} className="min-w-0 flex-1 cursor-pointer"><span className={`block font-medium ${dose.status === 'taken' ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{dose.medicine_name}</span><span className="mt-1 block text-sm text-slate-600"><time>{dose.local_time}</time>{dose.dose ? ` · ${dose.dose}` : ''}</span></label>
+                <StatusBadge status={dose.status} />
               </div>
+              {dose.status === 'pending' && <button type="button" onClick={() => setDoseStatus(dose, 'missed')} className="mt-3 min-h-11 rounded-lg px-3 text-sm font-semibold text-rose-800 hover:bg-rose-50">I did not take this dose</button>}
             </li>)}</ul>
           </article>)}
         </section>

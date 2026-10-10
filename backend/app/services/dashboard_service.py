@@ -10,6 +10,7 @@ from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from app.models import Patient, Prescription, PrescriptionItem, ScheduleDose, Verification
+from app.services.schedule_service import mark_overdue_doses
 
 
 DEMO_PATIENT_ID = 1
@@ -58,6 +59,7 @@ def get_dashboard_snapshot(
     if current_utc.tzinfo is None:
         raise ValueError("now_utc must include a timezone")
     current_utc = current_utc.astimezone(timezone.utc)
+    mark_overdue_doses(session, patient_id=patient_id, now_utc=current_utc)
 
     local_date = current_utc.astimezone(display_timezone).date()
     utc_start = datetime.combine(

@@ -8,6 +8,7 @@ from app.models import Patient, Prescription, PrescriptionItem, ScheduleDose
 from app.services.schedule_service import (
     UnconfirmedPrescriptionError,
     auto_schedule_prescription,
+    mark_overdue_doses,
     regenerate_item_schedule,
     suggest_times,
 )
@@ -160,3 +161,64 @@ def test_auto_schedule_rejects_unconfirmed_prescription(engine):
         with pytest.raises(UnconfirmedPrescriptionError):
             auto_schedule_prescription(session, prescription.id)
         assert list(session.exec(select(ScheduleDose)).all()) == []
+
+
+def test_overdue_pending_dose_is_marked_missed_after_response_window(engine):
+    with Session(engine) as session:
+        _, items = add_prescription(session, items=[{
+            "medicine_name": "Reminder medicine", "dose": "1 tablet",
+            "frequency": "daily", "duration_days": 1, "needs_review": False,
+        }])
+        dose = ScheduleDose(
+            prescription_item_id=items[0].id,
+            scheduled_at=datetime(2026, 10, 10, 8, 0, tzinfo=timezone.utc),
+            status="pending",
+        )
+        session.add(dose)
+        session.commit()
+        session.refresh(dose)
+
+        changed = mark_overdue_doses(
+            session,
+            patient_id=1,
+            now_utc=datetime(2026, 10, 10, 8, 31, tzinfo=timezone.utc),
+        )
+        session.refresh(dose)
+
+    assert changed == 1
+    assert dose.status == "missed"
+    assert dose.taken_at is None
+
+
+def test_response_window_and_completed_doses_are_preserved(engine):
+    with Session(engine) as session:
+        _, items = add_prescription(session, items=[{
+            "medicine_name": "Checklist medicine", "frequency": "twice daily",
+            "duration_days": 1, "needs_review": False,
+        }])
+        recent = ScheduleDose(
+            prescription_item_id=items[0].id,
+            scheduled_at=datetime(2026, 10, 10, 8, 1, tzinfo=timezone.utc),
+            status="pending",
+        )
+        taken = ScheduleDose(
+            prescription_item_id=items[0].id,
+            scheduled_at=datetime(2026, 10, 10, 7, 0, tzinfo=timezone.utc),
+            status="taken",
+            taken_at=datetime(2026, 10, 10, 7, 0, tzinfo=timezone.utc),
+        )
+        session.add_all([recent, taken])
+        session.commit()
+
+        changed = mark_overdue_doses(
+            session,
+            patient_id=1,
+            now_utc=datetime(2026, 10, 10, 8, 30, tzinfo=timezone.utc),
+        )
+        session.refresh(recent)
+        session.refresh(taken)
+
+    assert changed == 0
+    assert recent.status == "pending"
+    assert taken.status == "taken"
+    assert taken.taken_at is not None

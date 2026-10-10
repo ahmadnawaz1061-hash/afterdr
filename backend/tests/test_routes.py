@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from io import BytesIO
 
 import pytest
@@ -339,7 +339,16 @@ def test_schedule_routes_return_frontend_contract_shapes():
         assert len(today.json()) == 2
         assert [dose["local_time"] for dose in today.json()] == ["09:00", "21:00"]
         assert all(dose["medicine_name"] == "Demo Relief One" for dose in today.json())
-        assert all(dose["status"] == "pending" for dose in today.json())
+        now_local = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Karachi"))
+        expected_statuses = [
+            "missed" if now_local > datetime.combine(
+                local_today,
+                time.fromisoformat(reminder_time),
+                tzinfo=ZoneInfo("Asia/Karachi"),
+            ) + timedelta(minutes=30) else "pending"
+            for reminder_time in ["09:00", "21:00"]
+        ]
+        assert [dose["status"] for dose in today.json()] == expected_statuses
 
         dose_id = today.json()[0]["id"]
         updated = client.patch(f"/api/schedules/{dose_id}", json={"status": "taken"})
