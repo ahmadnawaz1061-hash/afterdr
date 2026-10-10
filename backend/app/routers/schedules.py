@@ -1,5 +1,8 @@
+from collections import defaultdict
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlmodel import Session
+from sqlmodel import Session, select
 from zoneinfo import ZoneInfo
 
 from app.database import get_session
@@ -7,16 +10,25 @@ from app.schemas import (
     ScheduleCreateRequest,
     ScheduleCreateResponse,
     ScheduleDoseResponse,
+    ScheduleDayResponse,
+    ScheduleItemResponse,
+    ScheduleRegenerateRequest,
+    PrescriptionScheduleResponse,
+    ConfirmedPrescriptionOption,
     ScheduleUpdateRequest,
 )
 from app.services.schedule_service import (
     InvalidTimezoneError,
+    NoFutureDosesError,
     ScheduleDoseNotFoundError,
     ScheduleItemNotFoundError,
     ScheduleSaveError,
     UnconfirmedPrescriptionError,
     create_schedule as create_schedule_records,
+    get_prescription_schedule,
     get_today_doses,
+    regenerate_item_schedule,
+    suggest_times,
     update_dose_status,
 )
 from app.models import Prescription, PrescriptionItem, ScheduleDose
@@ -68,6 +80,112 @@ def create_schedule(
     except ScheduleSaveError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    return ScheduleCreateResponse(
+        schedule_id=result.schedule_id,
+        doses_created=result.doses_created,
+        status="scheduled",
+    )
+
+
+@router.get("", response_model=PrescriptionScheduleResponse, include_in_schema=False)
+def get_schedule(
+    prescription_id: int | None = Query(default=None, ge=1),
+    timezone: str = Query(default="Asia/Karachi"),
+    session: Session = Depends(get_session),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PrescriptionScheduleResponse:
+    prescriptions = list(session.exec(
+        select(Prescription)
+        .where(
+            Prescription.patient_id == user.patient.id,
+            Prescription.status == "confirmed",
+        )
+        .order_by(Prescription.created_at.desc(), Prescription.id.desc())
+    ).all())
+    options = [ConfirmedPrescriptionOption(
+        prescription_id=record.id,
+        created_at=record.created_at,
+    ) for record in prescriptions]
+    if prescription_id is None:
+        if not prescriptions:
+            return PrescriptionScheduleResponse(
+                prescription_id=None, timezone=timezone, prescriptions=[], items=[]
+            )
+        prescription_id = prescriptions[0].id
+    if prescription_id not in {record.id for record in prescriptions}:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+
+    try:
+        prescription, views = get_prescription_schedule(session, prescription_id, timezone)
+        zone = ZoneInfo(timezone)
+    except InvalidTimezoneError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ScheduleItemNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except UnconfirmedPrescriptionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    items = []
+    for view in views:
+        grouped = defaultdict(list)
+        for dose in view.doses:
+            local_date = dose.scheduled_at.astimezone(zone).date()
+            grouped[local_date].append(_dose_response(
+                dose,
+                medicine_name=view.item.medicine_name,
+                local_time=dose.scheduled_at.astimezone(zone).strftime("%H:%M"),
+            ))
+        course_start = view.course_start
+        course_end = view.course_end
+        if course_start is None and view.item.duration_days:
+            course_start = prescription.created_at.astimezone(zone).date()
+            course_end = course_start + timedelta(days=view.item.duration_days - 1)
+        items.append(ScheduleItemResponse(
+            prescription_item_id=view.item.id,
+            medicine_name=view.item.medicine_name,
+            dose=view.item.dose,
+            frequency=view.item.frequency,
+            duration_days=view.item.duration_days,
+            status=view.status,
+            reason=view.reason,
+            times=list(view.times),
+            suggested_times=suggest_times(view.item.frequency) or [],
+            course_start=course_start,
+            course_end=course_end,
+            days=[ScheduleDayResponse(date=day, doses=doses) for day, doses in grouped.items()],
+        ))
+    return PrescriptionScheduleResponse(
+        prescription_id=prescription.id,
+        timezone=timezone,
+        prescriptions=options,
+        items=items,
+    )
+
+
+@router.post(
+    "/items/{item_id:int}/regenerate",
+    response_model=ScheduleCreateResponse,
+    include_in_schema=False,
+)
+def regenerate_schedule(
+    payload: ScheduleRegenerateRequest,
+    item_id: int = Path(ge=1),
+    session: Session = Depends(get_session),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ScheduleCreateResponse:
+    _owned_item(session, item_id, user.patient.id)
+    try:
+        result = regenerate_item_schedule(
+            session, item_id, payload.reminder_times, payload.timezone
+        )
+    except ScheduleItemNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except UnconfirmedPrescriptionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (NoFutureDosesError, InvalidTimezoneError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ScheduleSaveError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return ScheduleCreateResponse(
         schedule_id=result.schedule_id,
         doses_created=result.doses_created,

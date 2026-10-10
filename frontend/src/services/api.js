@@ -62,7 +62,82 @@ export async function extractPrescription(file) {
 }
 
 export async function savePrescription(payload) {
+  if (USE_MOCKS) return mockResponse({
+    prescription_id: 1,
+    status: "confirmed",
+    medicine_count: payload.medicines.length,
+    scheduling: {
+      items: payload.medicines.map((medicine, index) => ({
+        prescription_item_id: 201 + index,
+        medicine_name: medicine.name,
+        status: index === 0 ? "scheduled" : "needs_times",
+        times: index === 0 ? ["09:00", "21:00"] : [],
+        doses_created: index === 0 ? 10 : 0,
+        reason: index === 0 ? null : "Set reminder times for this frequency.",
+      })),
+      error: null,
+    },
+  });
   const response = await api.post("/prescriptions", payload);
+  return response.data;
+}
+
+function demoSchedule(prescriptionId = 1) {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const doses = createDemoTodaySchedule();
+  return {
+    prescription_id: Number(prescriptionId),
+    timezone: "Asia/Karachi",
+    prescriptions: [{ prescription_id: Number(prescriptionId), created_at: new Date().toISOString() }],
+    items: [
+      {
+        prescription_item_id: 201, medicine_name: demoPrescription.medicines[0].name,
+        dose: demoPrescription.medicines[0].dose, frequency: demoPrescription.medicines[0].frequency,
+        duration_days: 5, status: "scheduled", reason: null,
+        times: ["09:00", "21:00"], suggested_times: ["09:00", "21:00"],
+        course_start: today, course_end: today,
+        days: [{ date: today, doses: doses.filter((dose) => dose.prescription_item_id === 201) }],
+        is_demo: true,
+      },
+      {
+        prescription_item_id: 202, medicine_name: demoPrescription.medicines[1].name,
+        dose: demoPrescription.medicines[1].dose, frequency: null,
+        duration_days: 3, status: "needs_times",
+        reason: "Set reminder times for this frequency.", times: [], suggested_times: [],
+        course_start: today, course_end: today, days: [], is_demo: true,
+      },
+    ],
+    is_demo: true,
+  };
+}
+
+export async function getPrescriptionSchedule(prescriptionId, timezone = "Asia/Karachi") {
+  if (USE_MOCKS) return mockResponse(demoSchedule(prescriptionId || 1));
+  const response = await api.get("/schedules", {
+    params: { ...(prescriptionId ? { prescription_id: prescriptionId } : {}), timezone },
+  });
+  return response.data;
+}
+
+export async function regenerateScheduleItem(itemId, reminderTimes, timezone = "Asia/Karachi") {
+  if (USE_MOCKS) return mockResponse({ schedule_id: itemId, doses_created: reminderTimes.length * 5, status: "scheduled", is_demo: true });
+  const response = await api.post(`/schedules/items/${itemId}/regenerate`, {
+    reminder_times: reminderTimes,
+    timezone,
+  });
+  return response.data;
+}
+
+export async function updateScheduleDose(doseId, status) {
+  if (USE_MOCKS) return mockResponse({
+    ...createDemoTodaySchedule().find((dose) => dose.id === doseId),
+    status,
+    taken_at: status === "taken" ? new Date().toISOString() : null,
+    is_demo: true,
+  });
+  const response = await api.patch(`/schedules/${doseId}`, { status });
   return response.data;
 }
 

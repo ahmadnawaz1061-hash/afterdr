@@ -95,13 +95,29 @@ class PrescriptionCreateRequest(ContractModel):
     patient_name: str | None = None
     doctor_name: str | None = None
     status: Literal["confirmed"] = "confirmed"
+    auto_schedule: bool = True
     medicines: list[PrescriptionMedicine] = Field(min_length=1)
+
+
+class PrescriptionSchedulingItem(ContractModel):
+    prescription_item_id: int
+    medicine_name: str
+    status: Literal["scheduled", "needs_times"]
+    times: list[str]
+    doses_created: int = Field(ge=0)
+    reason: str | None = None
+
+
+class PrescriptionSchedulingResponse(ContractModel):
+    items: list[PrescriptionSchedulingItem]
+    error: str | None = None
 
 
 class PrescriptionCreateResponse(ContractModel):
     prescription_id: int
     status: Literal["confirmed"] = "confirmed"
     medicine_count: int = Field(ge=1)
+    scheduling: PrescriptionSchedulingResponse | None = None
 
 
 class PrescriptionItemResponse(PrescriptionMedicine):
@@ -165,6 +181,60 @@ class ScheduleDoseResponse(ContractModel):
 class ScheduleUpdateRequest(ContractModel):
     status: DoseStatus
     taken_at: datetime | None = None
+
+
+class ScheduleRegenerateRequest(ContractModel):
+    reminder_times: list[time] = Field(min_length=1)
+    timezone: str = "Asia/Karachi"
+
+    @field_validator("reminder_times")
+    @classmethod
+    def times_must_be_local(cls, values: list[time]) -> list[time]:
+        if any(value.tzinfo is not None for value in values):
+            raise ValueError("Reminder times must not include a UTC offset")
+        return values
+
+    @field_validator("timezone")
+    @classmethod
+    def regenerate_timezone_must_be_valid(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            ZoneInfo(value.strip())
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Timezone must be a valid IANA timezone") from exc
+        return value.strip()
+
+
+class ScheduleDayResponse(ContractModel):
+    date: date
+    doses: list[ScheduleDoseResponse]
+
+
+class ScheduleItemResponse(ContractModel):
+    prescription_item_id: int
+    medicine_name: str
+    dose: str | None = None
+    frequency: str | None = None
+    duration_days: int | None = None
+    status: Literal["scheduled", "needs_times"]
+    reason: str | None = None
+    times: list[str]
+    suggested_times: list[str]
+    course_start: date | None = None
+    course_end: date | None = None
+    days: list[ScheduleDayResponse]
+
+
+class ConfirmedPrescriptionOption(ContractModel):
+    prescription_id: int
+    created_at: datetime
+
+
+class PrescriptionScheduleResponse(ContractModel):
+    prescription_id: int | None = None
+    timezone: str
+    prescriptions: list[ConfirmedPrescriptionOption]
+    items: list[ScheduleItemResponse]
 
 
 class MedicineResponse(ContractModel):

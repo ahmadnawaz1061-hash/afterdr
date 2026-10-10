@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, FileSearch } from 'lucide-react';
+import { UNSAFE_NavigationContext } from 'react-router-dom';
 import FileUploader from '../components/common/FileUploader';
 import LoadingState from '../components/common/LoadingState';
 import ErrorMessage from '../components/common/ErrorMessage';
@@ -24,6 +25,7 @@ export default function PrescriptionPage() {
   const [saving, setSaving] = useState(false);
   const requestId = useRef(0);
   const resultRef = useRef(null);
+  const navigationContext = useContext(UNSAFE_NavigationContext);
 
   useEffect(() => () => { requestId.current += 1; }, []);
 
@@ -85,6 +87,7 @@ export default function PrescriptionPage() {
         patient_name: result.patient_name || null,
         doctor_name: result.doctor_name || null,
         status: 'confirmed',
+        auto_schedule: true,
         medicines: reviewedMedicines,
       });
       setResult((current) => ({
@@ -92,6 +95,12 @@ export default function PrescriptionPage() {
         ...saved,
         medicines: reviewedMedicines,
       }));
+      if (navigationContext) {
+        navigationContext.navigator.push(
+          `/scheduler?prescription_id=${saved.prescription_id}`,
+          { automaticSchedule: saved.scheduling },
+        );
+      }
     } catch (requestError) {
       setSaveError(requestError);
     } finally {
@@ -145,7 +154,13 @@ export default function PrescriptionPage() {
             <CheckCircle2 size={18} aria-hidden="true" />{saving ? 'Saving prescription…' : 'Confirm reviewed instructions'}
           </button>}
         </div>}
-        {result?.status === 'confirmed' && <div role="status" aria-live="polite" className="mt-5 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm font-medium text-teal-900">Prescription saved to your account.</div>}
+        {result?.status === 'confirmed' && <div role="status" aria-live="polite" className="mt-5 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm font-medium text-teal-900">
+          <p>Prescription saved to your account. Your schedule has been created.</p>
+          {result.scheduling?.items?.filter((item) => item.status === 'needs_times').length > 0 && <ul className="mt-2 list-disc pl-5">
+            {result.scheduling.items.filter((item) => item.status === 'needs_times').map((item) => <li key={item.prescription_item_id}>{item.medicine_name}: {item.reason}</li>)}
+          </ul>}
+          {result.scheduling?.error && <p className="mt-2 text-amber-900">{result.scheduling.error}</p>}
+        </div>}
       </section>
     </div>
   );

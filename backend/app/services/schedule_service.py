@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone as datetime_timezone
+import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlmodel import Session, col, select
@@ -39,6 +40,10 @@ class ScheduleSaveError(ScheduleServiceError):
     """Raised after a scheduler transaction has been rolled back."""
 
 
+class NoFutureDosesError(ScheduleServiceError):
+    """Raised when a replacement schedule has no future occurrences."""
+
+
 @dataclass(frozen=True)
 class ScheduleCreationResult:
     schedule_id: int
@@ -50,6 +55,78 @@ class TodayDose:
     dose: ScheduleDose
     medicine_name: str
     local_time: str
+
+
+@dataclass(frozen=True)
+class ItemSchedulingResult:
+    prescription_item_id: int
+    medicine_name: str
+    status: str
+    times: tuple[str, ...]
+    doses_created: int
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class PrescriptionSchedulingResult:
+    items: tuple[ItemSchedulingResult, ...]
+
+
+@dataclass(frozen=True)
+class ScheduleItemView:
+    item: PrescriptionItem
+    status: str
+    reason: str | None
+    times: tuple[str, ...]
+    course_start: date | None
+    course_end: date | None
+    doses: tuple[ScheduleDose, ...]
+
+
+def suggest_times(frequency: str | None) -> list[str] | None:
+    """Return conservative reminder suggestions for recognized directions."""
+    if frequency is None:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", " ", frequency.casefold()).strip()
+    if not normalized:
+        return None
+    words = set(normalized.split())
+    if words & {"prn", "sos"} or "as needed" in normalized:
+        return None
+
+    exact_or_phrase = (
+        (("every 12 hours",), ["09:00", "21:00"]),
+        (("every 8 hours",), ["06:00", "14:00", "22:00"]),
+        (("every 6 hours",), ["06:00", "12:00", "18:00", "00:00"]),
+        (("four times daily",), ["08:00", "12:00", "16:00", "20:00"]),
+        (("three times daily",), ["08:00", "14:00", "21:00"]),
+        (("twice daily",), ["09:00", "21:00"]),
+        (("once daily",), ["09:00"]),
+        (("at bedtime", "at night"), ["22:00"]),
+    )
+    for phrases, times in exact_or_phrase:
+        if any(phrase in normalized for phrase in phrases):
+            return times
+
+    abbreviations = {
+        "qid": ["08:00", "12:00", "16:00", "20:00"],
+        "tds": ["08:00", "14:00", "21:00"],
+        "tid": ["08:00", "14:00", "21:00"],
+        "bd": ["09:00", "21:00"],
+        "bid": ["09:00", "21:00"],
+        "od": ["09:00"],
+        "hs": ["22:00"],
+    }
+    for abbreviation, times in abbreviations.items():
+        if abbreviation in words:
+            return times
+    if "daily" in words:
+        return ["09:00"]
+    if "morning" in words:
+        return ["09:00"]
+    if "evening" in words:
+        return ["19:00"]
+    return None
 
 
 def timezone_for_name(timezone_name: str) -> ZoneInfo:
@@ -70,11 +147,224 @@ def _utc_occurrences(
             start_date + timedelta(days=day_offset),
             reminder_time,
             tzinfo=zone,
-        ).astimezone(timezone.utc)
+        ).astimezone(datetime_timezone.utc)
         for day_offset in range(duration_days)
         for reminder_time in reminder_times
     }
     return sorted(occurrences)
+
+
+def _parse_suggested_times(values: list[str]) -> list[time]:
+    return [time.fromisoformat(value) for value in values]
+
+
+def _insert_occurrences(
+    session: Session,
+    item_id: int,
+    occurrences: list[datetime],
+) -> int:
+    if not occurrences:
+        return 0
+    existing = set(session.exec(
+        select(ScheduleDose.scheduled_at).where(
+            ScheduleDose.prescription_item_id == item_id,
+            col(ScheduleDose.scheduled_at).in_(occurrences),
+        )
+    ).all())
+    new_occurrences = [value for value in occurrences if value not in existing]
+    session.add_all([
+        ScheduleDose(
+            prescription_item_id=item_id,
+            scheduled_at=scheduled_at,
+            status="pending",
+        )
+        for scheduled_at in new_occurrences
+    ])
+    return len(new_occurrences)
+
+
+def auto_schedule_prescription(
+    session: Session,
+    prescription_id: int,
+    start_date: date | None = None,
+    timezone: str = "Asia/Karachi",
+    *,
+    now_utc: datetime | None = None,
+) -> PrescriptionSchedulingResult:
+    prescription = session.get(Prescription, prescription_id)
+    if prescription is None:
+        raise ScheduleItemNotFoundError(f"Prescription {prescription_id} was not found")
+    if prescription.status != "confirmed":
+        raise UnconfirmedPrescriptionError(
+            "A schedule can only be created for a confirmed prescription"
+        )
+
+    zone = timezone_for_name(timezone)
+    current_utc = now_utc or datetime.now(datetime_timezone.utc)
+    if current_utc.tzinfo is None:
+        raise ValueError("now_utc must include a timezone")
+    current_utc = current_utc.astimezone(datetime_timezone.utc)
+    local_today = current_utc.astimezone(zone).date()
+    course_start = start_date or local_today
+    items = list(session.exec(
+        select(PrescriptionItem)
+        .where(PrescriptionItem.prescription_id == prescription_id)
+        .order_by(PrescriptionItem.id)
+    ).all())
+    results: list[ItemSchedulingResult] = []
+
+    try:
+        for item in items:
+            reason = None
+            suggested = suggest_times(item.frequency)
+            if item.needs_review:
+                reason = "Review ambiguous instructions before setting times."
+            elif not item.duration_days or item.duration_days < 1:
+                reason = "Add a valid course duration before setting times."
+            elif suggested is None:
+                reason = "Set reminder times for this frequency."
+
+            if reason:
+                results.append(ItemSchedulingResult(
+                    prescription_item_id=item.id,
+                    medicine_name=item.medicine_name,
+                    status="needs_times",
+                    times=(),
+                    doses_created=0,
+                    reason=reason,
+                ))
+                continue
+
+            occurrences = _utc_occurrences(
+                course_start,
+                item.duration_days,
+                _parse_suggested_times(suggested),
+                zone,
+            )
+            if course_start == local_today:
+                occurrences = [value for value in occurrences if value > current_utc]
+            created = _insert_occurrences(session, item.id, occurrences)
+            results.append(ItemSchedulingResult(
+                prescription_item_id=item.id,
+                medicine_name=item.medicine_name,
+                status="scheduled",
+                times=tuple(suggested),
+                doses_created=created,
+            ))
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise ScheduleSaveError("The automatic schedule could not be saved") from exc
+    return PrescriptionSchedulingResult(items=tuple(results))
+
+
+def regenerate_item_schedule(
+    session: Session,
+    item_id: int,
+    reminder_times: list[time],
+    timezone: str,
+    *,
+    now_utc: datetime | None = None,
+) -> ScheduleCreationResult:
+    item = session.get(PrescriptionItem, item_id)
+    if item is None:
+        raise ScheduleItemNotFoundError(f"Prescription item {item_id} was not found")
+    prescription = session.get(Prescription, item.prescription_id)
+    if prescription is None or prescription.status != "confirmed":
+        raise UnconfirmedPrescriptionError(
+            "A schedule can only be created for a confirmed prescription"
+        )
+    if not reminder_times:
+        raise NoFutureDosesError("Choose at least one reminder time")
+    if not item.duration_days or item.duration_days < 1:
+        raise NoFutureDosesError("Add a valid course duration before setting times")
+
+    zone = timezone_for_name(timezone)
+    current_utc = now_utc or datetime.now(datetime_timezone.utc)
+    if current_utc.tzinfo is None:
+        raise ValueError("now_utc must include a timezone")
+    current_utc = current_utc.astimezone(datetime_timezone.utc)
+    all_doses = list(session.exec(
+        select(ScheduleDose)
+        .where(ScheduleDose.prescription_item_id == item_id)
+        .order_by(ScheduleDose.scheduled_at)
+    ).all())
+    if all_doses:
+        course_start = min(dose.scheduled_at.astimezone(zone).date() for dose in all_doses)
+    else:
+        course_start = current_utc.astimezone(zone).date()
+    occurrences = [value for value in _utc_occurrences(
+        course_start, item.duration_days, reminder_times, zone
+    ) if value > current_utc]
+    if not occurrences:
+        raise NoFutureDosesError("The selected times do not create any future doses")
+
+    try:
+        for dose in all_doses:
+            if dose.status == "pending" and dose.scheduled_at > current_utc:
+                session.delete(dose)
+        session.flush()
+        created = _insert_occurrences(session, item_id, occurrences)
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        raise ScheduleSaveError("The schedule could not be regenerated") from exc
+    return ScheduleCreationResult(schedule_id=item_id, doses_created=created)
+
+
+def get_prescription_schedule(
+    session: Session,
+    prescription_id: int,
+    timezone: str,
+) -> tuple[Prescription, tuple[ScheduleItemView, ...]]:
+    prescription = session.get(Prescription, prescription_id)
+    if prescription is None:
+        raise ScheduleItemNotFoundError(f"Prescription {prescription_id} was not found")
+    if prescription.status != "confirmed":
+        raise UnconfirmedPrescriptionError(
+            "A schedule can only be viewed for a confirmed prescription"
+        )
+    zone = timezone_for_name(timezone)
+    items = list(session.exec(
+        select(PrescriptionItem)
+        .where(PrescriptionItem.prescription_id == prescription_id)
+        .order_by(PrescriptionItem.id)
+    ).all())
+    item_ids = [item.id for item in items]
+    doses = list(session.exec(
+        select(ScheduleDose)
+        .where(col(ScheduleDose.prescription_item_id).in_(item_ids))
+        .order_by(ScheduleDose.scheduled_at, ScheduleDose.id)
+    ).all()) if item_ids else []
+    by_item: dict[int, list[ScheduleDose]] = {item_id: [] for item_id in item_ids}
+    for dose in doses:
+        by_item[dose.prescription_item_id].append(dose)
+
+    views = []
+    for item in items:
+        item_doses = by_item[item.id]
+        local_dates = [dose.scheduled_at.astimezone(zone).date() for dose in item_doses]
+        times = tuple(sorted({
+            dose.scheduled_at.astimezone(zone).strftime("%H:%M")
+            for dose in item_doses
+        }))
+        reason = None
+        if item.needs_review:
+            reason = "Review ambiguous instructions before setting times."
+        elif not item.duration_days:
+            reason = "Add a valid course duration before setting times."
+        elif not item_doses:
+            reason = "Set reminder times for this frequency."
+        views.append(ScheduleItemView(
+            item=item,
+            status="scheduled" if item_doses else "needs_times",
+            reason=reason,
+            times=times,
+            course_start=min(local_dates) if local_dates else None,
+            course_end=max(local_dates) if local_dates else None,
+            doses=tuple(item_doses),
+        ))
+    return prescription, tuple(views)
 
 
 def create_schedule(
@@ -106,25 +396,9 @@ def create_schedule(
     )
 
     try:
-        existing = set(session.exec(
-            select(ScheduleDose.scheduled_at).where(
-                ScheduleDose.prescription_item_id == payload.prescription_item_id,
-                col(ScheduleDose.scheduled_at).in_(occurrences),
-            )
-        ).all())
-        new_occurrences = [
-            scheduled_at
-            for scheduled_at in occurrences
-            if scheduled_at not in existing
-        ]
-        session.add_all([
-            ScheduleDose(
-                prescription_item_id=payload.prescription_item_id,
-                scheduled_at=scheduled_at,
-                status="pending",
-            )
-            for scheduled_at in new_occurrences
-        ])
+        created = _insert_occurrences(
+            session, payload.prescription_item_id, occurrences
+        )
         session.commit()
     except Exception as exc:
         session.rollback()
@@ -132,7 +406,7 @@ def create_schedule(
 
     return ScheduleCreationResult(
         schedule_id=payload.prescription_item_id,
-        doses_created=len(new_occurrences),
+        doses_created=created,
     )
 
 
@@ -144,19 +418,19 @@ def get_today_doses(
     now_utc: datetime | None = None,
 ) -> list[TodayDose]:
     zone = timezone_for_name(timezone_name)
-    current_utc = now_utc or datetime.now(timezone.utc)
+    current_utc = now_utc or datetime.now(datetime_timezone.utc)
     if current_utc.tzinfo is None:
         raise ValueError("now_utc must include a timezone")
 
     local_date = current_utc.astimezone(zone).date()
     utc_start = datetime.combine(local_date, time.min, tzinfo=zone).astimezone(
-        timezone.utc
+        datetime_timezone.utc
     )
     utc_end = datetime.combine(
         local_date + timedelta(days=1),
         time.min,
         tzinfo=zone,
-    ).astimezone(timezone.utc)
+    ).astimezone(datetime_timezone.utc)
 
     rows = session.exec(
         select(ScheduleDose, PrescriptionItem)
@@ -194,14 +468,14 @@ def update_dose_status(
     if dose is None:
         raise ScheduleDoseNotFoundError(f"Schedule dose {dose_id} was not found")
 
-    current_utc = now_utc or datetime.now(timezone.utc)
+    current_utc = now_utc or datetime.now(datetime_timezone.utc)
     if current_utc.tzinfo is None:
         raise ValueError("now_utc must include a timezone")
 
     try:
         dose.status = status
         dose.taken_at = (
-            current_utc.astimezone(timezone.utc) if status == "taken" else None
+            current_utc.astimezone(datetime_timezone.utc) if status == "taken" else None
         )
         session.add(dose)
         session.commit()

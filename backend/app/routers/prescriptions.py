@@ -11,6 +11,8 @@ from app.schemas import (
     PrescriptionDetailResponse,
     PrescriptionExtractionResponse,
     PrescriptionItemResponse,
+    PrescriptionSchedulingItem,
+    PrescriptionSchedulingResponse,
 )
 from app.services.gemini_service import GeminiServiceError
 from app.services.auth_service import AuthenticatedUser, get_current_user
@@ -27,6 +29,7 @@ from app.services.prescription_service import (
     get_prescription_with_items,
     save_confirmed_prescription,
 )
+from app.services.schedule_service import auto_schedule_prescription
 
 
 router = APIRouter(prefix="/api/prescriptions", tags=["prescriptions"])
@@ -86,12 +89,20 @@ async def extract_prescription(
     )
 
 
-@router.post("", response_model=PrescriptionCreateResponse, status_code=201)
+@router.post(
+    "", response_model=PrescriptionCreateResponse, status_code=201,
+    response_model_exclude_none=True,
+)
 def create_prescription(
     payload: PrescriptionCreateRequest,
     session: Session = Depends(get_session),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> PrescriptionCreateResponse:
+    scheduling_requested_explicitly = "auto_schedule" in payload.model_fields_set
+    legacy_patient_id_supplied = "patient_id" in payload.model_fields_set
+    should_auto_schedule = payload.auto_schedule and (
+        scheduling_requested_explicitly or not legacy_patient_id_supplied
+    )
     try:
         prescription = save_confirmed_prescription(
             session,
@@ -105,10 +116,38 @@ def create_prescription(
             detail="The confirmed prescription could not be saved",
         ) from exc
 
+    scheduling = None
+    if should_auto_schedule:
+        try:
+            result = auto_schedule_prescription(session, prescription.id)
+            scheduling = PrescriptionSchedulingResponse(items=[
+                PrescriptionSchedulingItem(
+                    prescription_item_id=item.prescription_item_id,
+                    medicine_name=item.medicine_name,
+                    status=item.status,
+                    times=list(item.times),
+                    doses_created=item.doses_created,
+                    reason=item.reason,
+                )
+                for item in result.items
+            ])
+        except Exception:
+            logger.exception(
+                "Automatic scheduling failed after prescription %s was saved",
+                prescription.id,
+            )
+            scheduling = PrescriptionSchedulingResponse(
+                items=[],
+                error="The prescription was saved, but its schedule could not be created.",
+            )
+    elif scheduling_requested_explicitly:
+        scheduling = PrescriptionSchedulingResponse(items=[])
+
     return PrescriptionCreateResponse(
         prescription_id=prescription.id,
         status="confirmed",
         medicine_count=len(payload.medicines),
+        scheduling=scheduling,
     )
 
 
