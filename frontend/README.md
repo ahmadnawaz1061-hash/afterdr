@@ -1,7 +1,7 @@
-# MedCare AI frontend
+# After Dr frontend
 
 Local React + Vite + Tailwind CSS scaffold based on sections 3–4 of
-`../MedCare_AI_Complete_Architecture.md` (the supplied workspace architecture file).
+`../After_Dr_Complete_Architecture.md` (the supplied workspace architecture file).
 
 ## Run
 

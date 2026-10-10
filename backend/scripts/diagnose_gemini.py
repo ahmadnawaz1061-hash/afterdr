@@ -1,4 +1,4 @@
-"""Redacted live diagnostics for the MedCare AI Gemini integration."""
+"""Redacted live diagnostics for the After Dr Gemini integration."""
 
 from __future__ import annotations
 

@@ -1,6 +1,9 @@
 import { AlertTriangle, CheckCircle2, CircleDashed, HelpCircle, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
 
 export const verificationStatuses = {
+  likely_consistent: 'Looks consistent',
+  suspicious: 'Suspicious packaging',
+  unable_to_assess: 'Unable to assess',
   record_match: 'Record match found',
   inconsistent_information: 'Potential inconsistency',
   unable_to_verify: 'Unable to verify',
@@ -16,6 +19,9 @@ export const doseStatuses = {
 const labels = { ...verificationStatuses, ...doseStatuses };
 
 const colors = {
+  likely_consistent: 'bg-teal-50 text-teal-800 ring-teal-200',
+  suspicious: 'bg-orange-50 text-orange-900 ring-orange-200',
+  unable_to_assess: 'bg-amber-50 text-amber-900 ring-amber-200',
   pending: 'bg-amber-50 text-amber-900 ring-amber-200',
   taken: 'bg-teal-50 text-teal-800 ring-teal-200',
   missed: 'bg-rose-50 text-rose-800 ring-rose-200',
@@ -26,6 +32,9 @@ const colors = {
 };
 
 const icons = {
+  likely_consistent: ShieldCheck,
+  suspicious: ShieldAlert,
+  unable_to_assess: HelpCircle,
   pending: CircleDashed,
   taken: CheckCircle2,
   missed: XCircle,

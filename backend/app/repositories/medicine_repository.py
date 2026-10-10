@@ -1,7 +1,8 @@
 from sqlalchemy import func
-from sqlmodel import Session, col, or_, select
+from sqlmodel import Session, select
 
 from app.models import Medicine
+from app.services.medicine_search import rank_medicines
 
 
 class MedicineRepository:
@@ -9,19 +10,9 @@ class MedicineRepository:
         self.session = session
 
     def search_by_name(self, q: str, *, limit: int | None = None) -> list[Medicine]:
-        query = q.strip()
-        statement = select(Medicine)
-        if query:
-            statement = statement.where(
-                or_(
-                    col(Medicine.brand_name).icontains(query, autoescape=True),
-                    col(Medicine.active_ingredient).icontains(query, autoescape=True),
-                )
-            )
-        statement = statement.order_by(Medicine.brand_name, Medicine.id)
-        if limit is not None:
-            statement = statement.limit(limit)
-        return list(self.session.exec(statement).all())
+        medicines = list(self.session.exec(select(Medicine)).all())
+        matches = rank_medicines(medicines, q)
+        return [match.medicine for match in (matches[:limit] if limit is not None else matches)]
 
     def get_by_id(self, medicine_id: int) -> Medicine | None:
         return self.session.get(Medicine, medicine_id)

@@ -13,6 +13,8 @@ from app.database import create_db, engine
 from app.routers import auth, dashboard, medicines, prescriptions, reports, schedules, verification
 from app.schemas import HealthResponse
 from app.seed import seed_database
+from app.services.alternative_catalog import import_catalog
+from app.services.packaging_upload_limit import PackagingUploadLimitMiddleware
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -50,13 +52,17 @@ def configured_allowed_origins() -> list[str]:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     create_db()
+    if os.getenv("IMPORT_MEDICINE_CATALOG", "true").strip().casefold() in {"1", "true", "yes", "on"}:
+        with Session(engine) as session:
+            import_catalog(session)
     if demo_seed_enabled():
         with Session(engine) as session:
             seed_database(session=session)
     yield
 
 
-app = FastAPI(title="MedCare AI API", lifespan=lifespan)
+app = FastAPI(title="After Dr API", lifespan=lifespan)
+app.add_middleware(PackagingUploadLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

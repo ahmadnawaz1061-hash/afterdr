@@ -6,6 +6,6 @@ export const navigation = [
   { to: '/prescription', label: 'Prescription reader', icon: FileHeart },
   { to: '/scheduler', label: 'Medicine scheduler', icon: CalendarClock },
   { to: '/alternatives', label: 'Medicine alternatives', icon: Pill },
-  { to: '/verification', label: 'Safety checker', icon: ShieldCheck },
+  { to: '/verification', label: 'Medicine Packaging Check', icon: ShieldCheck },
   { to: '/reporting', label: 'Draft reporting', icon: FilePenLine },
 ];

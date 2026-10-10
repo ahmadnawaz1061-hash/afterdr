@@ -1,6 +1,6 @@
-# MedCare AI — Complete System Architecture & 24-Hour Implementation Roadmap
+# After Dr — Complete System Architecture & 24-Hour Implementation Roadmap
 
-> **Project:** MedCare AI — Post-Consultation Medicine Assistant
+> **Project:** After Dr — Post-Consultation Medicine Assistant
 > **Team:** Five developers
 > **Build window:** 24 hours (hackathon MVP)
 > **Stack:** React + Vite + Tailwind CSS · Python + FastAPI · SQLModel + SQLite · Gemini Vision API
@@ -30,7 +30,7 @@
 
 ## 1. Product scope and MVP definition
 
-**MedCare AI** helps a patient manage the tasks that follow a doctor's visit. Build only these five modules for the initial MVP:
+**After Dr** helps a patient manage the tasks that follow a doctor's visit. Build only these five modules for the initial MVP:
 
 | # | Feature | Patient input | Output | Implementation |
 |---|---|---|---|---|
@@ -126,7 +126,7 @@ flowchart TB
 ## 3. Repository structure
 
 ```text
-medcare-ai/
+after-dr/
 ├── frontend/
 │   ├── public/
 │   ├── src/
@@ -512,7 +512,7 @@ async def lifespan(app: FastAPI):
     create_db()
     yield
 
-app = FastAPI(title="MedCare AI API", lifespan=lifespan)
+app = FastAPI(title="After Dr API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -924,7 +924,7 @@ Example response:
 Suggested report fields:
 
 ```text
-MEDCARE AI — MEDICINE CONCERN REPORT
+AFTER DR — MEDICINE CONCERN REPORT
 Medicine name:
 Manufacturer:
 Registration number (if visible):
@@ -1112,11 +1112,11 @@ Give these prompts to your coding assistant **with access to your repository**. 
 
 ### Prompt 1 — Frontend
 
-> Inspect the repository and apply all available relevant frontend-design skills. Implement the complete MedCare AI React frontend: landing page, dashboard, prescription reader, scheduler, alternative finder, medicine safety checker, and complaint reporting. Use the existing design system or create a polished coherent one. All pages must be responsive, accessible, and interactive with clearly labeled mock data. Place backend calls in `src/services/api.js` and preserve the agreed request/response schemas. Do not put API secrets in browser code. Do not implement backend services.
+> Inspect the repository and apply all available relevant frontend-design skills. Implement the complete After Dr React frontend: landing page, dashboard, prescription reader, scheduler, alternative finder, medicine safety checker, and complaint reporting. Use the existing design system or create a polished coherent one. All pages must be responsive, accessible, and interactive with clearly labeled mock data. Place backend calls in `src/services/api.js` and preserve the agreed request/response schemas. Do not put API secrets in browser code. Do not implement backend services.
 
 ### Prompt 2 — Database
 
-> Build the MedCare AI SQLite database using SQLModel. Define Patient, Prescription, PrescriptionItem, Medicine, ScheduleDose, Verification, and Report entities with suitable keys and relationships. Include a seed script containing explicitly fictional/demo medicines and no fabricated official registration claims. Provide database session dependency helpers and tests. Follow existing repository file layout and avoid editing unrelated frontend code.
+> Build the After Dr SQLite database using SQLModel. Define Patient, Prescription, PrescriptionItem, Medicine, ScheduleDose, Verification, and Report entities with suitable keys and relationships. Include a seed script containing explicitly fictional/demo medicines and no fabricated official registration claims. Provide database session dependency helpers and tests. Follow existing repository file layout and avoid editing unrelated frontend code.
 
 ### Prompt 3 — Gemini extraction
 
@@ -1124,15 +1124,15 @@ Give these prompts to your coding assistant **with access to your repository**. 
 
 ### Prompt 4 — Scheduling and alternative finder
 
-> Implement MedCare AI's Python scheduling and alternative-search services behind the agreed FastAPI endpoints. Scheduling must only use confirmed prescriptions and explicit patient-selected reminder times; generate uniquely identified dose occurrences and support pending/taken/missed states. Alternative search must use a curated medicine catalog and matching rules for all ingredients, normalized strength, dosage form, route, and release characteristics, excluding ambiguous mismatches. Do not automatically approve substitutions. Write tests for edge cases.
+> Implement After Dr's Python scheduling and alternative-search services behind the agreed FastAPI endpoints. Scheduling must only use confirmed prescriptions and explicit patient-selected reminder times; generate uniquely identified dose occurrences and support pending/taken/missed states. Alternative search must use a curated medicine catalog and matching rules for all ingredients, normalized strength, dosage form, route, and release characteristics, excluding ambiguous mismatches. Do not automatically approve substitutions. Write tests for edge cases.
 
 ### Prompt 5 — Verification and reporting
 
-> Implement MedCare AI's medicine packaging consistency checker and suspicious-medicine reporting module. Accept the user-reviewed package extraction, compare available fields with reference records, and return one of record_match, inconsistent_information, or unable_to_verify. Include the reference source, and never claim proof of authenticity or counterfeiting from image analysis. Allow the user to generate a clearly labeled NOT SUBMITTED PDF complaint draft with screening findings, purchase details, and evidence summary. Integrate without breaking other endpoints; add tests.
+> Implement After Dr's medicine packaging consistency checker and suspicious-medicine reporting module. Accept the user-reviewed package extraction, compare available fields with reference records, and return one of record_match, inconsistent_information, or unable_to_verify. Include the reference source, and never claim proof of authenticity or counterfeiting from image analysis. Allow the user to generate a clearly labeled NOT SUBMITTED PDF complaint draft with screening findings, purchase details, and evidence summary. Integrate without breaking other endpoints; add tests.
 
 ### Prompt 6 — Integration/debugging
 
-> Act as the MedCare AI integration engineer. Inspect the React service calls, FastAPI routers, Pydantic schemas, SQLModel tables, and shared IDs. Compare the interfaces against the agreed API contract. Fix mismatched paths, fields, CORS, imports, and SQL relationships with minimal changes. Do not rewrite the UI or delete functions to suppress errors. Test the full fictional patient journey and explain remaining failures. Preserve a working demo mode if an external API is unavailable.
+> Act as the After Dr integration engineer. Inspect the React service calls, FastAPI routers, Pydantic schemas, SQLModel tables, and shared IDs. Compare the interfaces against the agreed API contract. Fix mismatched paths, fields, CORS, imports, and SQL relationships with minimal changes. Do not rewrite the UI or delete functions to suppress errors. Test the full fictional patient journey and explain remaining failures. Preserve a working demo mode if an external API is unavailable.
 
 ---
 
@@ -1227,4 +1227,4 @@ flowchart LR
 - [Vercel](https://vercel.com/)
 - [Render](https://render.com/)
 
-*Prepared as a practical, non-clinical implementation guide for a five-member, 24-hour MedCare AI prototype.*
+*Prepared as a practical, non-clinical implementation guide for a five-member, 24-hour After Dr prototype.*

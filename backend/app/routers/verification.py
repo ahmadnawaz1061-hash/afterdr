@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 from sqlmodel import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -29,6 +29,75 @@ from app.services.verification_service import (
 
 router = APIRouter(prefix="/api/verifications", tags=["verification"])
 logger = logging.getLogger(__name__)
+
+from app.services.packaging_contracts import PackagingAssessment, PackagingCorrections, PackagingHistoryItem
+from app.services.packaging_service import (
+    analyze_packaging, reanalyze_packaging, get_packaging_check, list_packaging_checks, PackagingWorkflowError,
+)
+
+
+def _packaging_http_error(exc):
+    if isinstance(exc, ImageTooLargeError):
+        return HTTPException(status_code=413, detail=str(exc))
+    if isinstance(exc, ImageValidationError):
+        return HTTPException(status_code=400, detail=str(exc))
+    status = getattr(exc, 'status_code', 502)
+    message = getattr(exc, 'public_message', 'Packaging analysis is temporarily unavailable')
+    headers = {'Retry-After': getattr(exc, 'retry_after', None) or '60'} if status == 429 else None
+    return HTTPException(status_code=status, detail=message, headers=headers)
+
+
+@router.post('/analyze', response_model=PackagingAssessment, status_code=201)
+async def analyze_package(
+    images: list[UploadFile] | None = File(default=None),
+    file: UploadFile | None = File(default=None),
+    trusted_reference: UploadFile | None = File(default=None),
+    brand_name: str | None = Form(default=None, max_length=200),
+    manufacturer: str | None = Form(default=None, max_length=250),
+    registration_number: str | None = Form(default=None, max_length=80),
+    session: Session = Depends(get_session),
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    uploads = (images or []) + ([file] if file else [])
+    all_uploads = uploads + ([trusted_reference] if trusted_reference else [])
+    try:
+        if images and file:
+            raise ImageValidationError('Use images or the legacy file field, not both')
+        if not 1 <= len(uploads) <= 3:
+            raise ImageValidationError('Upload one to three photos, with the front of the pack first')
+        data = [await image.read(MAX_IMAGE_SIZE + 1) for image in uploads]
+        reference_data = await trusted_reference.read(MAX_IMAGE_SIZE + 1) if trusted_reference else None
+        fields = {key: value for key, value in {'brand_name': brand_name, 'manufacturer': manufacturer, 'registration_number': registration_number}.items() if value is not None}
+        return await run_in_threadpool(analyze_packaging, session, user.patient.id, data, PackagingCorrections(**fields), reference_data)
+    except (ImageValidationError, GeminiServiceError, PackagingWorkflowError) as exc:
+        raise _packaging_http_error(exc) from exc
+    except Exception as exc:
+        logger.error('Packaging analysis failed: category=%s', type(exc).__name__)
+        raise HTTPException(status_code=502, detail='Packaging analysis is temporarily unavailable') from exc
+    finally:
+        for image in all_uploads:
+            await image.close()
+
+
+@router.post('/{verification_id:int}/reanalyze', response_model=PackagingAssessment, status_code=201)
+def reanalyze_check(verification_id: int, payload: PackagingCorrections, session: Session = Depends(get_session), user: AuthenticatedUser = Depends(get_current_user)):
+    try:
+        return reanalyze_packaging(session, user.patient.id, verification_id, payload)
+    except PackagingWorkflowError as exc:
+        raise _packaging_http_error(exc) from exc
+
+
+@router.get('/{verification_id:int}', response_model=PackagingAssessment)
+def get_check(verification_id: int, session: Session = Depends(get_session), user: AuthenticatedUser = Depends(get_current_user)):
+    try:
+        return get_packaging_check(session, user.patient.id, verification_id)
+    except PackagingWorkflowError as exc:
+        raise _packaging_http_error(exc) from exc
+
+
+@router.get('', response_model=list[PackagingHistoryItem])
+def list_checks(limit: int = Query(default=10, ge=1, le=50), offset: int = Query(default=0, ge=0, le=10000), session: Session = Depends(get_session), user: AuthenticatedUser = Depends(get_current_user)):
+    return list_packaging_checks(session, user.patient.id, limit, offset)
 
 
 @router.post("/extract", response_model=PackageExtractionResponse)

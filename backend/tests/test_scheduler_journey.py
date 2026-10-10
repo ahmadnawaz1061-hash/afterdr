@@ -10,7 +10,7 @@ from app import models  # noqa: F401
 from app.database import get_session
 from app.main import app
 from app.models import Patient
-from app.services import schedule_service
+from app.services import schedule_service, dashboard_service
 
 
 class MorningDateTime(datetime):
@@ -40,6 +40,7 @@ def test_automatic_scheduler_journey_updates_dashboard(monkeypatch):
             yield session
 
     monkeypatch.setattr(schedule_service, "datetime", MorningDateTime)
+    monkeypatch.setattr(dashboard_service, "datetime", MorningDateTime)
     app.dependency_overrides[get_session] = session_override
     try:
         with TestClient(app) as client:

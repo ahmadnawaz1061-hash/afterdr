@@ -100,6 +100,9 @@ def generate_report_pdf(session: Session, report_id: int) -> bytes:
 
     details = _json_object(verification.extracted_details_json)
     findings = _json_list(verification.findings_json)
+    analysis = _json_object(verification.findings_json) if details.get('schema_version') == 2 else None
+    if analysis:
+        details = analysis.get('extracted', {})
     medicine = (
         session.get(Medicine, verification.medicine_id)
         if verification.medicine_id is not None
@@ -128,7 +131,7 @@ def generate_report_pdf(session: Session, report_id: int) -> bytes:
         document.drawString(left, height - 46, DRAFT_LABEL)
         if include_title:
             document.setFont("Helvetica-Bold", 16)
-            document.drawString(left, height - 75, "MEDCARE AI \u2014 MEDICINE CONCERN REPORT")
+            document.drawString(left, height - 75, "AFTER DR \u2014 MEDICINE CONCERN REPORT")
             y = height - 105
         else:
             y = height - 72
@@ -163,8 +166,8 @@ def generate_report_pdf(session: Session, report_id: int) -> bytes:
             document.drawString(value_x, y, line)
         y -= 18
 
-    document.setTitle(f"MedCare AI report draft {report.id}")
-    document.setAuthor("MedCare AI")
+    document.setTitle(f"After Dr report draft {report.id}")
+    document.setAuthor("After Dr")
     page_header(include_title=True)
 
     medicine_name = details.get("brand_name") or (
@@ -179,8 +182,21 @@ def generate_report_pdf(session: Session, report_id: int) -> bytes:
     add_field("Medicine name", medicine_name)
     add_field("Manufacturer", manufacturer)
     add_field("Registration number (if visible)", registration)
-    add_field("Batch number", details.get("batch_number"))
-    add_field("Expiry date", details.get("expiry_date_text"))
+    if analysis:
+        add_field('Verification identifier', verification.id)
+        add_field('Assessment status', analysis.get('status_label'))
+        add_field('Risk level', analysis.get('risk_level'))
+        add_field('Risk score (not an authenticity probability)', analysis.get('risk_score'))
+        add_field('Assessment summary', analysis.get('summary'))
+        for field in ('active_ingredient', 'strength', 'dosage_form', 'pack_type'):
+            add_field(field.replace('_', ' ').title(), details.get(field))
+        if analysis.get('simulated'):
+            add_field('Evidence mode', 'Simulated demo data; demonstration findings are not regulatory determinations.')
+    else:
+        # Legacy downloads retain their original contract. The new packaging
+        # report intentionally contains none of the former date/batch fields.
+        add_field("Batch number", details.get("batch_number"))
+        add_field("Expiry date", details.get("expiry_date_text"))
     add_field("Seller / pharmacy", report.pharmacy_name)
     add_field("Purchase date", report.purchase_date.isoformat() if report.purchase_date else None)
     add_field("Observed concerns", report.description)
@@ -191,10 +207,29 @@ def generate_report_pdf(session: Session, report_id: int) -> bytes:
         f"{_display(item.get('result')).upper()} \u2014 {_display(item.get('message'))}"
         for item in findings
     ]
-    add_field("Supporting evidence", " | ".join(evidence) if evidence else None)
+    if analysis:
+        for signal in analysis.get('signals', []):
+            add_field(f"Evidence: {signal.get('title', 'Observation')}", f"{signal.get('severity')} | {signal.get('origin')} | {signal.get('detail')}")
+        reference = analysis.get('matched_reference')
+        online = analysis.get('online_lookup')
+        if online:
+            add_field('Internet product lookup', online.get('status'))
+            add_field('Online comparison', online.get('summary'))
+            if isinstance(online.get('product'), dict):
+                for key in ('brand_name', 'manufacturer', 'active_ingredient', 'strength', 'dosage_form'):
+                    add_field('Online ' + key.replace('_', ' '), online['product'].get(key))
+            for source in online.get('sources', []):
+                add_field('Internet source', f"{source.get('title')} | {source.get('url')}")
+        if reference:
+            add_field('Available reference comparison', f"{reference.get('brand_name')} | {reference.get('manufacturer')} | {reference.get('data_source')} | {reference.get('comparison_status')}")
+            add_field('Reference source', reference.get('source_url'))
+        add_field('Registration comparison', analysis.get('registration_state'))
+        add_field('Recommended next steps', ' | '.join(analysis.get('next_steps', [])))
+    else:
+        add_field("Supporting evidence", " | ".join(evidence) if evidence else None)
     generated_at = report.created_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     add_field("Report generated on", generated_at)
-    add_field("Limitations", LIMITATIONS)
+    add_field("Limitations", ' | '.join(analysis.get('limitations', [])) if analysis else LIMITATIONS)
 
     footer()
     document.save()

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlmodel import Session, col, or_, select
+from sqlmodel import Session, col, select
 from typing import Literal
 
 from app.database import get_session
@@ -7,6 +7,7 @@ from app.repositories.medicine_repository import MedicineRepository
 from app.schemas import AlternativeMedicineResponse, MedicineResponse
 from app.models import Medicine
 from app.services.alternative_catalog import load_catalog, provenance
+from app.services.medicine_search import rank_medicines
 from app.services.alternative_service import (
     SUBSTITUTION_NOTICE,
     MedicineNotFoundError,
@@ -19,15 +20,18 @@ router = APIRouter(prefix="/api/medicines", tags=["medicines"])
 
 
 class CatalogMedicineResponse(MedicineResponse):
+    similar_spelling: bool = False
     source_url: str | None = None
     source_checked_at: str | None = None
     formulation_source_url: str | None = None
+    source_search_query: str | None = None
 
 
 class CatalogAlternativeResponse(AlternativeMedicineResponse):
     source_url: str | None = None
     source_checked_at: str | None = None
     formulation_source_url: str | None = None
+    source_search_query: str | None = None
 
 
 def _medicine_response(medicine) -> CatalogMedicineResponse:
@@ -50,17 +54,16 @@ def search_medicines(
     if catalog == "drap_pk":
         registrations = [record["registration_no"] for record in load_catalog()["records"]]
         statement = select(Medicine).where(Medicine.data_source == "drap_pk", col(Medicine.registration_no).in_(registrations))
-        if q.strip():
-            statement = statement.where(or_(
-                col(Medicine.brand_name).icontains(q.strip(), autoescape=True),
-                col(Medicine.active_ingredient).icontains(q.strip(), autoescape=True),
-            ))
         medicines = session.exec(statement.order_by(Medicine.brand_name, Medicine.id)).all()
         # A source marker alone is insufficient: require an exact sourced record.
-        medicines = [medicine for medicine in medicines if provenance(medicine)][offset:offset + limit]
+        medicines = [medicine for medicine in medicines if provenance(medicine)]
     else:
-        medicines = MedicineRepository(session).search_by_name(q, limit=offset + limit)[offset:offset + limit]
-    return [_medicine_response(medicine) for medicine in medicines]
+        medicines = session.exec(select(Medicine)).all()
+    matches = rank_medicines(medicines, q)
+    return [
+        _medicine_response(match.medicine).model_copy(update={"similar_spelling": match.similar_spelling})
+        for match in matches[offset:offset + limit]
+    ]
 
 
 @router.get("/{medicine_id:int}/alternatives", response_model=list[CatalogAlternativeResponse], response_model_exclude_unset=True)
