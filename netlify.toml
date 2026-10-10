@@ -1,0 +1,9 @@
+[build]
+  base = "frontend"
+  command = "npm run build:netlify"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  VITE_API_BASE_URL = "/api"
+  VITE_USE_MOCKS = "false"
