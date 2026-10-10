@@ -63,6 +63,7 @@ export default function SimpleMedicineCard({ item, times, dose, busy, saving, er
         </div>
       </dl>
       {displayStatus === 'overdue' && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-950">This dose is more than 2 hours late. Mark it Taken or Missed.</p>}
+      {!dose && <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">No dose is scheduled for today. Status buttons will become available on the scheduled day.</p>}
       {error && <div className="mt-3"><ErrorMessage title="Could not update this medicine" message={error} /></div>}
     </Card>
   );

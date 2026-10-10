@@ -152,6 +152,31 @@ def test_regenerate_keeps_taken_and_missed_and_replaces_future_pending(engine):
     assert any(dose.status == "pending" for dose in remaining)
 
 
+def test_regenerate_adds_today_when_new_time_has_not_passed(engine):
+    with Session(engine) as session:
+        _, items = add_prescription(session, items=[{
+            "medicine_name": "Evening medicine", "frequency": "once daily",
+            "duration_days": 3, "needs_review": False,
+        }])
+        session.add(ScheduleDose(
+            prescription_item_id=items[0].id,
+            scheduled_at=datetime(2026, 10, 11, 4, 0, tzinfo=timezone.utc),
+            status="pending",
+        ))
+        session.commit()
+
+        result = regenerate_item_schedule(
+            session, items[0].id, [time(22)], "Asia/Karachi",
+            now_utc=datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc),
+        )
+        doses = list(session.exec(
+            select(ScheduleDose).order_by(ScheduleDose.scheduled_at)
+        ).all())
+
+    assert result.doses_created == 3
+    assert doses[0].scheduled_at == datetime(2026, 10, 10, 17, 0, tzinfo=timezone.utc)
+
+
 def test_auto_schedule_rejects_unconfirmed_prescription(engine):
     with Session(engine) as session:
         prescription, _ = add_prescription(session, status="needs_review", items=[{

@@ -15,9 +15,8 @@ function initialTimes(item) {
 }
 
 function activeDose(item) {
-  const doses = item.days.flatMap((day) => day.doses).sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
   const today = item.days.find((day) => day.date === dateAtOffset(0))?.doses || [];
-  return today.find((dose) => dose.status === 'pending') || today[0] || doses.find((dose) => dose.status === 'pending') || doses[0] || null;
+  return today.find((dose) => dose.status === 'pending') || today[0] || null;
 }
 
 export default function SchedulerPage() {
