@@ -90,4 +90,6 @@ it('refreshes dashboard totals without requiring a page reload', async () => {
   await waitFor(() => expect(screen.getByRole('link', { name: /Taken today: 1/ })).toBeTruthy());
   expect(screen.getByRole('link', { name: /Missed today: 1/ })).toBeTruthy();
   expect(screen.getByRole('link', { name: /Still pending: 0/ })).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Recent checks: 1/ })).toBeTruthy();
+  expect(screen.queryByText(/Course medicine at 9:00 PM/)).toBeNull();
 });

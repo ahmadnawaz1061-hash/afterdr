@@ -140,6 +140,10 @@ def test_complete_mock_ai_journey(e2e_client):
         "missed": 0,
         "remaining": 1,
     }
+    assert dashboard.json()["next_dose"] == {
+        "medicine": "Demo Relief One",
+        "time": "23:59",
+    }
     assert dashboard.json()["recent_verifications"] == 0
 
     missed = e2e_client.patch(
@@ -155,6 +159,7 @@ def test_complete_mock_ai_journey(e2e_client):
         "missed": 1,
         "remaining": 0,
     }
+    assert refreshed_dashboard.json()["next_dose"] is None
 
     search = e2e_client.get(
         "/api/medicines/search",
