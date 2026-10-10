@@ -17,3 +17,12 @@
   .skip-link { @apply sr-only; }
   .skip-link:focus { @apply not-sr-only fixed top-2 left-2 z-50 rounded-lg bg-teal-800 px-5 py-3 text-white; }
 }
+
+@keyframes scheduler-slide-in {
+  from { opacity: 0; transform: translateY(-0.75rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .scheduler-reminder-enter { animation: scheduler-slide-in 240ms ease-out; }
+}
