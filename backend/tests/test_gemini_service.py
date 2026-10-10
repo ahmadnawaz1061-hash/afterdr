@@ -140,6 +140,7 @@ def test_real_call_uses_configured_request_timeout(monkeypatch):
             captured["timeout"] = http_options.timeout
 
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_MODEL", "test-image-model")
     monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setattr(gemini_service.genai, "Client", Client)
 
@@ -151,6 +152,7 @@ def test_real_call_uses_configured_request_timeout(monkeypatch):
 @pytest.mark.parametrize("value", ["0", "-1", "not-a-number", "121"])
 def test_invalid_request_timeout_is_rejected(monkeypatch, value):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_MODEL", "test-image-model")
     monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", value)
 
     with pytest.raises(gemini_service.GeminiConfigurationError):

@@ -11,12 +11,12 @@ export function reminderCount(frequency) {
 }
 
 export function dateAtOffset(offset) {
-  const value = new Date();
-  value.setHours(12, 0, 0, 0);
-  value.setDate(value.getDate() + offset);
-  return new Intl.DateTimeFormat('en-CA', {
+  const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(value);
+  }).format(new Date());
+  const value = new Date(`${today}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + offset);
+  return value.toISOString().slice(0, 10);
 }
 
 export function statusForDose(dose, now = Date.now()) {
