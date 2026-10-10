@@ -54,12 +54,18 @@ class PrescriptionExtraction(ExtractionModel):
 
 class PackageExtraction(ExtractionModel):
     brand_name: str | None = None
+    active_ingredient: str | None = None
     manufacturer: str | None = None
     registration_number: str | None = None
     batch_number: str | None = None
+    mfg_date_text: str | None = None
     expiry_date_text: str | None = None
     strength: str | None = None
     dosage_form: str | None = None
+    barcode_or_qr: str | None = None
+    visual_packaging_flags: list[str] = Field(default_factory=list)
+    image_quality_issues: list[str] = Field(default_factory=list)
+    altered_label_flags: list[str] = Field(default_factory=list)
     needs_review: bool = True
 
 
