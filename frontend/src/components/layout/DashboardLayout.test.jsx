@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import DashboardLayout from './DashboardLayout';
 import DashboardPage from '../../pages/DashboardPage';
@@ -16,7 +16,7 @@ beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   getDashboard.mockResolvedValue({
     patient: { id: 1, name: 'Test User' }, active_prescriptions: 0,
-    today: { total_doses: 0, taken: 0, remaining: 0 },
+    today: { total_doses: 0, taken: 0, missed: 0, remaining: 0 },
     next_dose: null, recent_verifications: 0,
   });
 });
@@ -64,5 +64,30 @@ it('shows account data without preview controls or sample records', async () => 
   renderLayout();
   expect(await screen.findByRole('heading', { name: 'Welcome, Test User' })).toBeTruthy();
   expect(screen.getByText('Active prescriptions')).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Taken today: 0/ }).getAttribute('href')).toBe('/scheduler');
+  expect(screen.getByRole('link', { name: /Missed today: 0/ }).getAttribute('href')).toBe('/scheduler');
+  expect(screen.getByRole('link', { name: 'Check a package' }).getAttribute('href')).toBe('/verification');
   expect(screen.queryByRole('button', { name: 'View sample' })).toBeNull();
+});
+
+it('refreshes dashboard totals without requiring a page reload', async () => {
+  getDashboard
+    .mockResolvedValueOnce({
+      patient: { id: 1, name: 'Test User' }, active_prescriptions: 1,
+      today: { total_doses: 2, taken: 0, missed: 0, remaining: 2 },
+      next_dose: { medicine: 'Course medicine', time: '21:00' }, recent_verifications: 0,
+    })
+    .mockResolvedValueOnce({
+      patient: { id: 1, name: 'Test User' }, active_prescriptions: 1,
+      today: { total_doses: 2, taken: 1, missed: 1, remaining: 0 },
+      next_dose: null, recent_verifications: 1,
+    });
+  renderLayout();
+  expect(await screen.findByRole('link', { name: /Taken today: 0/ })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh dashboard' }));
+
+  await waitFor(() => expect(screen.getByRole('link', { name: /Taken today: 1/ })).toBeTruthy());
+  expect(screen.getByRole('link', { name: /Missed today: 1/ })).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Still pending: 0/ })).toBeTruthy();
 });

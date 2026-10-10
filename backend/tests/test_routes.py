@@ -505,7 +505,7 @@ def test_report_dashboard_and_health_routes_return_data():
         assert dashboard.json() == {
             "patient": {"id": 1, "name": "Demo Patient"},
             "active_prescriptions": 0,
-            "today": {"total_doses": 0, "taken": 0, "remaining": 0},
+            "today": {"total_doses": 0, "taken": 0, "missed": 0, "remaining": 0},
             "next_dose": None,
             "recent_verifications": 1,
         }

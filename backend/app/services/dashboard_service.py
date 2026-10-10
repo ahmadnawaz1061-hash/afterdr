@@ -25,6 +25,7 @@ class DashboardPatientNotFoundError(LookupError):
 class DashboardDoseSummary:
     total: int
     taken: int
+    missed: int
     remaining: int
 
 
@@ -80,10 +81,12 @@ def get_dashboard_snapshot(
         )
     ).one()
 
-    total_doses, taken_doses = session.exec(
+    total_doses, taken_doses, missed_doses, pending_doses = session.exec(
         select(
             func.count(ScheduleDose.id),
             func.coalesce(func.sum(case((ScheduleDose.status == "taken", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((ScheduleDose.status == "missed", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((ScheduleDose.status == "pending", 1), else_=0)), 0),
         )
         .join(
             PrescriptionItem,
@@ -99,6 +102,8 @@ def get_dashboard_snapshot(
     ).one()
     total = int(total_doses or 0)
     taken = int(taken_doses or 0)
+    missed = int(missed_doses or 0)
+    pending = int(pending_doses or 0)
 
     next_row = session.exec(
         select(ScheduleDose.scheduled_at, PrescriptionItem.medicine_name)
@@ -136,7 +141,8 @@ def get_dashboard_snapshot(
         today=DashboardDoseSummary(
             total=total,
             taken=taken,
-            remaining=total - taken,
+            missed=missed,
+            remaining=pending,
         ),
         next_dose=next_dose,
         recent_verifications=int(verification_count or 0),

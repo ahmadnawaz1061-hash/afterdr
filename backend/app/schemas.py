@@ -337,6 +337,7 @@ class DashboardPatient(ContractModel):
 class DashboardToday(ContractModel):
     total_doses: int
     taken: int
+    missed: int
     remaining: int
 
 

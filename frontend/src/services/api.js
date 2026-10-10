@@ -40,7 +40,7 @@ export async function getCurrentUser() {
 }
 
 export async function getDashboard() {
-  const response = await api.get("/dashboard");
+  const response = await api.get("/dashboard", { params: { _t: Date.now() } });
   return response.data;
 }
 

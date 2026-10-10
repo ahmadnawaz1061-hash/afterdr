@@ -37,6 +37,7 @@ def get_dashboard(
         today=DashboardToday(
             total_doses=snapshot.today.total,
             taken=snapshot.today.taken,
+            missed=snapshot.today.missed,
             remaining=snapshot.today.remaining,
         ),
         next_dose=(
