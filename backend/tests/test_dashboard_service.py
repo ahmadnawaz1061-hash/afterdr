@@ -118,7 +118,8 @@ def test_dashboard_aggregates_only_the_demo_patient_and_local_day(dashboard_sess
     assert snapshot.active_prescriptions == 1
     assert snapshot.today.total == 3
     assert snapshot.today.taken == 1
-    assert snapshot.today.remaining == 2
+    assert snapshot.today.missed == 1
+    assert snapshot.today.remaining == 1
     assert snapshot.next_dose.medicine == "Demo Morning Medicine"
     assert snapshot.next_dose.local_time == "11:00"
     assert snapshot.recent_verifications == 2
@@ -133,6 +134,7 @@ def test_dashboard_returns_empty_aggregates_when_patient_has_no_records(dashboar
     assert snapshot.active_prescriptions == 0
     assert snapshot.today.total == 0
     assert snapshot.today.taken == 0
+    assert snapshot.today.missed == 0
     assert snapshot.today.remaining == 0
     assert snapshot.next_dose is None
     assert snapshot.recent_verifications == 0

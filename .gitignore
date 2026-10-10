@@ -16,3 +16,4 @@ frontend.zip
 .pytest_cache/
 .coverage
 htmlcov/
+*.log

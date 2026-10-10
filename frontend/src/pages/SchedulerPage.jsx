@@ -1,86 +1,47 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CalendarClock, Check, Plus, RotateCcw } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ErrorMessage from '../components/common/ErrorMessage';
-import LoadingState from '../components/common/LoadingState';
-import StatusBadge, { DemoBadge } from '../components/common/StatusBadge';
+import { DemoBadge } from '../components/common/StatusBadge';
+import { EmptyScheduleCard, SchedulerSkeleton } from '../components/scheduler/ScheduleStateCards';
+import SimpleMedicineCard from '../components/scheduler/SimpleMedicineCard';
+import { dateAtOffset, reminderCount } from '../components/scheduler/schedulerUtils';
 import { getPrescriptionSchedule, regenerateScheduleItem, updateScheduleDose, USE_MOCKS } from '../services/api';
 
 const TIMEZONE = 'Asia/Karachi';
-const RESPONSE_WINDOW_MS = 30 * 60 * 1000;
 
-function localToday() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
+function initialTimes(item) {
+  if (item.times?.length) return [...item.times];
+  return Array.from({ length: Math.max(reminderCount(item.frequency), 1) }, () => '');
+}
+
+function activeDose(item) {
+  const today = item.days.find((day) => day.date === dateAtOffset(0))?.doses || [];
+  return today.find((dose) => dose.status === 'pending') || today[0] || null;
 }
 
 export default function SchedulerPage() {
   const [params, setParams] = useSearchParams();
   const requestedId = params.get('prescription_id');
   const [state, setState] = useState({ status: 'loading', data: null, error: null });
-  const [edits, setEdits] = useState({});
+  const [timesByItem, setTimesByItem] = useState({});
   const [savingItem, setSavingItem] = useState(null);
+  const [busyDose, setBusyDose] = useState(null);
+  const [cardErrors, setCardErrors] = useState({});
   const [notice, setNotice] = useState('');
-  const [dueDose, setDueDose] = useState(null);
-  const notifiedDoseIds = useRef(new Set());
-  const updatingDoseIds = useRef(new Set());
 
   const load = useCallback(async () => {
     setState((current) => ({ status: 'loading', data: current.data, error: null }));
     try {
       const data = await getPrescriptionSchedule(requestedId, TIMEZONE);
       setState({ status: 'success', data, error: null });
-      setEdits(Object.fromEntries(data.items.map((item) => [
-        item.prescription_item_id,
-        item.times.length ? item.times : item.suggested_times.length ? item.suggested_times : ['09:00'],
-      ])));
-      if (!requestedId && data.prescription_id) {
-        setParams({ prescription_id: String(data.prescription_id) }, { replace: true });
-      }
+      setTimesByItem(Object.fromEntries(data.items.map((item) => [item.prescription_item_id, initialTimes(item)])));
+      if (!requestedId && data.prescription_id) setParams({ prescription_id: String(data.prescription_id) }, { replace: true });
     } catch (error) {
       setState({ status: 'error', data: null, error });
     }
   }, [requestedId, setParams]);
 
   useEffect(() => { load(); }, [load]);
-
-  function updateTime(itemId, index, value) {
-    setEdits((current) => ({
-      ...current,
-      [itemId]: current[itemId].map((time, timeIndex) => timeIndex === index ? value : time),
-    }));
-  }
-
-  function addTime(itemId) {
-    setEdits((current) => ({ ...current, [itemId]: [...(current[itemId] || []), '09:00'] }));
-  }
-
-  function removeTime(itemId, index) {
-    setEdits((current) => ({
-      ...current,
-      [itemId]: current[itemId].filter((_, timeIndex) => timeIndex !== index),
-    }));
-  }
-
-  async function saveTimes(item) {
-    const times = [...new Set((edits[item.prescription_item_id] || []).filter(Boolean))];
-    if (!times.length) {
-      setNotice(`${item.medicine_name}: choose at least one reminder time.`);
-      return;
-    }
-    setSavingItem(item.prescription_item_id);
-    setNotice('');
-    try {
-      await regenerateScheduleItem(item.prescription_item_id, times, TIMEZONE);
-      setNotice(`${item.medicine_name}: reminder times updated.`);
-      await load();
-    } catch (error) {
-      setNotice(error?.response?.data?.detail || error.message || 'The reminder times could not be updated.');
-    } finally {
-      setSavingItem(null);
-    }
-  }
 
   function replaceDose(doseId, replacement) {
     setState((current) => ({
@@ -89,184 +50,111 @@ export default function SchedulerPage() {
         ...current.data,
         items: current.data.items.map((item) => ({
           ...item,
-          days: item.days.map((day) => ({
-            ...day,
-            doses: day.doses.map((dose) => dose.id === doseId ? replacement : dose),
-          })),
+          days: item.days.map((day) => ({ ...day, doses: day.doses.map((dose) => dose.id === doseId ? replacement : dose) })),
         })),
       },
     }));
   }
 
   async function setDoseStatus(dose, status) {
-    if (updatingDoseIds.current.has(dose.id)) return;
-    updatingDoseIds.current.add(dose.id);
+    if (!dose || busyDose === dose.id) return;
     const previous = dose;
+    setBusyDose(dose.id);
+    setCardErrors((current) => ({ ...current, [dose.prescription_item_id]: null }));
     replaceDose(dose.id, { ...dose, status, taken_at: status === 'taken' ? new Date().toISOString() : null });
     setNotice(`Updating ${dose.medicine_name}…`);
     try {
       const updated = await updateScheduleDose(dose.id, status);
-      replaceDose(dose.id, updated);
-      if (status !== 'pending' && dueDose?.id === dose.id) setDueDose(null);
+      replaceDose(dose.id, { ...dose, ...updated });
       setNotice(`${dose.medicine_name} marked ${status}.`);
     } catch (error) {
       replaceDose(dose.id, previous);
-      setNotice(error?.response?.data?.detail || error.message || 'The dose status could not be updated.');
+      const message = error?.response?.data?.detail || error.message || 'The medicine status could not be updated.';
+      setCardErrors((current) => ({ ...current, [dose.prescription_item_id]: message }));
+      setNotice(message);
     } finally {
-      updatingDoseIds.current.delete(dose.id);
+      setBusyDose(null);
     }
   }
 
-  const groupedDays = useMemo(() => {
-    if (!state.data) return [];
-    const groups = new Map();
-    for (const item of state.data.items) {
-      for (const day of item.days) {
-        groups.set(day.date, [...(groups.get(day.date) || []), ...day.doses]);
-      }
-    }
-    const today = localToday();
-    return [...groups.entries()].sort(([a], [b]) => {
-      if (a === today) return -1;
-      if (b === today) return 1;
-      return a.localeCompare(b);
-    });
-  }, [state.data]);
-
-  const todaySummary = useMemo(() => {
-    const doses = groupedDays.find(([day]) => day === localToday())?.[1] || [];
-    return {
-      total: doses.length,
-      taken: doses.filter((dose) => dose.status === 'taken').length,
-      missed: doses.filter((dose) => dose.status === 'missed').length,
-      remaining: doses.filter((dose) => dose.status === 'pending').length,
-    };
-  }, [groupedDays]);
-
-  const allDoses = useMemo(
-    () => groupedDays.flatMap(([, doses]) => doses),
-    [groupedDays],
-  );
-
-  useEffect(() => {
-    function checkDueDoses() {
-      const now = Date.now();
-      for (const dose of allDoses) {
-        if (dose.status !== 'pending') continue;
-        const elapsed = now - new Date(dose.scheduled_at).getTime();
-        if (elapsed > RESPONSE_WINDOW_MS) {
-          setDoseStatus(dose, 'missed');
-          continue;
-        }
-        if (elapsed >= 0 && !notifiedDoseIds.current.has(dose.id)) {
-          notifiedDoseIds.current.add(dose.id);
-          setDueDose(dose);
-          setNotice(`It is time to take ${dose.medicine_name}.`);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Medicine reminder', {
-              body: `${dose.medicine_name} is due now${dose.dose ? `: ${dose.dose}` : ''}.`,
-              tag: `medcare-dose-${dose.id}`,
-            });
-          }
-        }
-      }
-    }
-    checkDueDoses();
-    const interval = window.setInterval(checkDueDoses, 30000);
-    return () => window.clearInterval(interval);
-  }, [allDoses]);
-
-  async function enableNotifications() {
-    if (!('Notification' in window)) {
-      setNotice('Browser notifications are not supported here. In-app reminders will still appear.');
-      return;
-    }
-    const permission = await Notification.requestPermission();
-    setNotice(permission === 'granted'
-      ? 'Browser reminders enabled while this app is open.'
-      : 'Browser reminders were not enabled. In-app reminders will still appear.');
+  function updateTime(itemId, index, value) {
+    setTimesByItem((current) => ({
+      ...current,
+      [itemId]: current[itemId].map((time, timeIndex) => timeIndex === index ? value : time),
+    }));
   }
 
-  return <div className="space-y-8">
-    <header className="max-w-3xl">
-      <p className="mb-3 text-xs font-bold tracking-[0.18em] text-teal-700 uppercase">Your care workspace</p>
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Medicine scheduler</h1>
-      <p className="mt-3 text-base leading-7 text-slate-600">Review suggested times and track each scheduled dose.</p>
-    </header>
+  async function saveTimes(item) {
+    const times = timesByItem[item.prescription_item_id] || [];
+    if (!times.length || times.some((value) => !value)) return;
+    setSavingItem(item.prescription_item_id);
+    setCardErrors((current) => ({ ...current, [item.prescription_item_id]: null }));
+    setNotice(`Saving ${item.medicine_name} reminder…`);
+    try {
+      await regenerateScheduleItem(item.prescription_item_id, times, TIMEZONE);
+      setNotice(`${item.medicine_name} reminder saved.`);
+      await load();
+    } catch (error) {
+      const message = error?.response?.data?.detail || error.message || 'The reminder time could not be saved.';
+      setCardErrors((current) => ({ ...current, [item.prescription_item_id]: message }));
+      setNotice(message);
+    } finally {
+      setSavingItem(null);
+    }
+  }
 
-    <p className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-medium leading-6 text-sky-950">
-      Schedule created automatically from your confirmed prescription. Times are suggestions. Edit them if they don't suit you.
-    </p>
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
-      <p>Reminders work inside this app only. Keep the page open, as notifications are not sent when it is closed. An unanswered dose is marked Missed after 30 minutes.</p>
-      <button type="button" onClick={enableNotifications} className="button-secondary mt-3 gap-2 bg-white"><Bell size={16} aria-hidden="true" />Enable browser reminders</button>
-    </div>
-    {dueDose && <section className="rounded-2xl border-2 border-teal-600 bg-teal-50 p-5" role="alert" aria-live="assertive">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div><p className="text-xs font-bold uppercase tracking-wide text-teal-800">Medicine due now</p><h2 className="mt-1 text-lg font-bold text-slate-900">{dueDose.medicine_name}</h2><p className="mt-1 text-sm text-slate-700">{dueDose.dose || 'Follow the reviewed prescription instructions.'}</p></div>
-        <button type="button" onClick={() => setDoseStatus(dueDose, 'taken')} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-800 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-900"><Check size={18} aria-hidden="true" />Mark as taken</button>
-      </div>
-    </section>}
-    <p className="sr-only" role="status" aria-live="polite">{notice}</p>
-    {notice && <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" aria-hidden="true">{notice}</p>}
+  return (
+    <div className="space-y-6">
+      <header className="max-w-3xl">
+        <p className="mb-3 text-xs font-bold tracking-[0.18em] text-teal-700 uppercase">Your care workspace</p>
+        <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">Medicine scheduler</h1>
+        <p className="mt-3 text-base leading-7 text-slate-600">View each medicine, choose its reminder time, and record whether you took it.</p>
+      </header>
 
-    {state.status === 'loading' && !state.data && <LoadingState title="Loading your schedule…" message="Gathering your confirmed medicines and doses." />}
-    {state.status === 'error' && <ErrorMessage title="Could not load your schedule" error={state.error} message={state.error?.message} onRetry={load} />}
-    {state.status === 'success' && state.data && <>
-      {(USE_MOCKS || state.data.is_demo) && <DemoBadge />}
-      {state.data.prescriptions.length > 0 && <label className="block max-w-md text-sm font-semibold text-slate-700">
-        Confirmed prescription
-        <select value={state.data.prescription_id ?? ''} onChange={(event) => setParams({ prescription_id: event.target.value })} className="mt-2 min-h-11 w-full rounded-xl border border-slate-400 bg-white px-3 text-base">
-          {state.data.prescriptions.map((prescription) => <option key={prescription.prescription_id} value={prescription.prescription_id}>Prescription #{prescription.prescription_id} · {new Date(prescription.created_at).toLocaleDateString()}</option>)}
-        </select>
-      </label>}
+      <p className="sr-only" role="status" aria-live="polite">{notice}</p>
+      {notice && <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm" aria-hidden="true">{notice}</p>}
 
-      {state.data.items.length === 0 ? <section className="state-panel rounded-2xl border border-slate-200 bg-white" role="status" aria-live="polite">
-        <CalendarClock size={32} className="mx-auto mb-4 text-slate-400" aria-hidden="true" />
-        <h2 className="font-semibold text-slate-900">No confirmed prescription yet</h2>
-        <p className="mt-2 text-sm text-slate-600">Confirm a reviewed prescription to create your schedule.</p>
-        <Link to="/prescription" className="button-secondary mt-5">Go to Prescription Reader</Link>
-      </section> : <>
-        <section aria-label="Today’s dose summary" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {Object.entries(todaySummary).map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-2xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs font-semibold capitalize text-slate-600">{label}</p></div>)}
-        </section>
+      {state.status === 'loading' && !state.data && <SchedulerSkeleton />}
+      {state.status === 'error' && <ErrorMessage title="Could not load your schedule" error={state.error} message={state.error?.message} onRetry={load} />}
 
-        <section className="space-y-4" aria-labelledby="medicine-times-title">
-          <h2 id="medicine-times-title" className="text-xl font-bold text-slate-900">Medicine reminder times</h2>
-          {state.data.items.map((item) => <article key={item.prescription_item_id} className={`rounded-2xl border bg-white p-5 sm:p-6 ${item.status === 'needs_times' ? 'border-amber-300' : 'border-slate-200'}`}>
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{item.medicine_name}</h3><p className="mt-1 text-sm text-slate-600">{item.dose || 'Dose not provided'} · {item.frequency || 'Frequency needs review'}</p></div>{item.is_demo && <DemoBadge />}</div>
-            <p className="mt-3 text-sm text-slate-600">Course: {item.course_start || 'Not set'} to {item.course_end || 'Not set'}</p>
-            {item.status === 'needs_times' && <p className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">{item.reason || 'Choose reminder times before scheduling this medicine.'}</p>}
-            <div className="mt-4 flex flex-wrap gap-3">
-              {(edits[item.prescription_item_id] || []).map((value, index) => <div key={`${item.prescription_item_id}-${index}`} className="flex items-center gap-2 rounded-xl bg-slate-100 p-2">
-                <label className="sr-only" htmlFor={`time-${item.prescription_item_id}-${index}`}>Reminder time {index + 1} for {item.medicine_name}</label>
-                <input id={`time-${item.prescription_item_id}-${index}`} type="time" value={value} onChange={(event) => updateTime(item.prescription_item_id, index, event.target.value)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 text-base" />
-                <button type="button" onClick={() => removeTime(item.prescription_item_id, index)} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-rose-800 hover:bg-rose-50" aria-label={`Remove reminder time ${index + 1} for ${item.medicine_name}`}>Remove</button>
-              </div>)}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={() => addTime(item.prescription_item_id)} className="button-secondary gap-2"><Plus size={16} aria-hidden="true" />Add time</button>
-              <button type="button" disabled={savingItem === item.prescription_item_id} onClick={() => saveTimes(item)} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-teal-800 px-5 py-2 text-sm font-semibold text-white hover:bg-teal-900 disabled:bg-slate-400">{savingItem === item.prescription_item_id ? 'Saving…' : item.status === 'needs_times' ? 'Set times' : 'Save new times'}</button>
-              <button type="button" disabled={!item.suggested_times.length} onClick={() => setEdits((current) => ({ ...current, [item.prescription_item_id]: item.suggested_times }))} className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"><RotateCcw size={16} aria-hidden="true" />Reset to suggested</button>
-            </div>
-          </article>)}
-        </section>
+      {state.status === 'success' && state.data && (
+        <>
+          {(USE_MOCKS || state.data.is_demo) && <DemoBadge />}
 
-        <section className="space-y-4" aria-labelledby="daily-view-title">
-          <h2 id="daily-view-title" className="text-xl font-bold text-slate-900">Daily doses</h2>
-          {groupedDays.length === 0 ? <p className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">No doses have been generated yet. Set reminder times above.</p> : groupedDays.map(([day, doses]) => <article key={day} className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-            <h3 className="font-semibold text-slate-900">{day === localToday() ? `Today · ${day}` : day}</h3>
-            <ul className="mt-4 divide-y divide-slate-200">{doses.map((dose) => <li key={dose.id} className="py-4 first:pt-0 last:pb-0">
-              <div className="flex items-start gap-3">
-                <input id={`dose-check-${dose.id}`} type="checkbox" checked={dose.status === 'taken'} onChange={(event) => setDoseStatus(dose, event.target.checked ? 'taken' : 'pending')} className="mt-1 size-6 shrink-0 rounded border-slate-500 accent-teal-700" />
-                <label htmlFor={`dose-check-${dose.id}`} className="min-w-0 flex-1 cursor-pointer"><span className={`block font-medium ${dose.status === 'taken' ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{dose.medicine_name}</span><span className="mt-1 block text-sm text-slate-600"><time>{dose.local_time}</time>{dose.dose ? ` · ${dose.dose}` : ''}</span></label>
-                <StatusBadge status={dose.status} />
+          {state.data.prescriptions.length > 1 && (
+            <label className="block max-w-md text-sm font-semibold text-slate-700">Prescription
+              <select value={state.data.prescription_id ?? ''} onChange={(event) => setParams({ prescription_id: event.target.value })} className="mt-2 min-h-11 w-full rounded-xl border border-slate-400 bg-white px-3 text-base">
+                {state.data.prescriptions.map((prescription) => <option key={prescription.prescription_id} value={prescription.prescription_id}>Prescription #{prescription.prescription_id}</option>)}
+              </select>
+            </label>
+          )}
+
+          {state.data.items.length === 0 ? <EmptyScheduleCard /> : (
+            <section aria-labelledby="medicine-cards-title">
+              <h2 id="medicine-cards-title" className="mb-4 text-xl font-bold text-slate-950">Your medicines</h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {state.data.items.map((item) => {
+                  const dose = activeDose(item);
+                  return (
+                    <SimpleMedicineCard
+                      key={item.prescription_item_id}
+                      item={item}
+                      times={timesByItem[item.prescription_item_id] || initialTimes(item)}
+                      dose={dose}
+                      busy={busyDose === dose?.id}
+                      saving={savingItem === item.prescription_item_id}
+                      error={cardErrors[item.prescription_item_id]}
+                      onTimeChange={(index, value) => updateTime(item.prescription_item_id, index, value)}
+                      onSaveTimes={() => saveTimes(item)}
+                      onStatus={setDoseStatus}
+                    />
+                  );
+                })}
               </div>
-              {dose.status === 'pending' && <button type="button" onClick={() => setDoseStatus(dose, 'missed')} className="mt-3 min-h-11 rounded-lg px-3 text-sm font-semibold text-rose-800 hover:bg-rose-50">I did not take this dose</button>}
-            </li>)}</ul>
-          </article>)}
-        </section>
-      </>}
-    </>}
-  </div>;
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
 }

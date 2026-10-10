@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import SchedulerPage from './SchedulerPage';
 import { getPrescriptionSchedule, regenerateScheduleItem, updateScheduleDose } from '../services/api';
@@ -35,14 +35,14 @@ function scheduleData() {
       days: [{ date: today, doses: [{
         id: 31, prescription_item_id: 9, medicine_name: 'Course medicine',
         scheduled_at: '2099-10-10T04:00:00Z', local_time: '09:00', status: 'pending',
-        dose: '1 tablet',
-        taken_at: null, is_demo: false,
+        dose: '1 tablet', taken_at: null, is_demo: false,
       }] }],
     }],
   };
 }
 
 beforeEach(() => {
+  localStorage.clear();
   getPrescriptionSchedule.mockReset().mockResolvedValue(scheduleData());
   regenerateScheduleItem.mockReset().mockResolvedValue({ schedule_id: 9, doses_created: 10, status: 'scheduled' });
   updateScheduleDose.mockReset().mockImplementation((id, status) => Promise.resolve({
@@ -55,34 +55,54 @@ function renderPage() {
   return render(<MemoryRouter initialEntries={['/scheduler?prescription_id=4']}><SchedulerPage /></MemoryRouter>);
 }
 
-it('loads generated doses, edits times, and marks a dose', async () => {
+it('shows the five medicine details, saves a time, and marks a dose taken', async () => {
   renderPage();
-  expect(screen.getByText('Loading your schedule…')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Loading your schedule' })).toBeTruthy();
   expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
-  expect(screen.getByText(/Schedule created automatically/)).toBeTruthy();
-  expect(screen.getByText(/An unanswered dose is marked Missed after 30 minutes/)).toBeTruthy();
-  const summary = screen.getByRole('region', { name: 'Today’s dose summary' });
-  expect(within(summary).getByText('total').previousSibling.textContent).toBe('1');
+  for (const label of ['Reminder', 'Status', 'Dosage', 'Frequency', 'Time']) {
+    expect(screen.getByText(label)).toBeTruthy();
+  }
+  expect(screen.getByText('Enabled')).toBeTruthy();
+  expect(screen.getByText('1 tablet')).toBeTruthy();
+  expect(screen.getByText('twice daily')).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText('Reminder time 1 for Course medicine'), { target: { value: '10:00' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save new times' }));
+  fireEvent.change(screen.getByLabelText('Reminder 1'), { target: { value: '10:00' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save time' }));
   expect(regenerateScheduleItem).toHaveBeenCalledWith(9, ['10:00', '21:00'], 'Asia/Karachi');
 
-  fireEvent.click(screen.getByRole('checkbox', { name: /Course medicine/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Taken' }));
   expect(await screen.findByText('Taken')).toBeTruthy();
   expect(updateScheduleDose).toHaveBeenCalledWith(31, 'taken');
 });
 
-it('automatically marks an unanswered overdue dose as missed', async () => {
+it('shows an overdue nudge without changing the stored status', async () => {
   const data = scheduleData();
-  data.items[0].days[0].doses[0].scheduled_at = new Date(Date.now() - (31 * 60 * 1000)).toISOString();
+  data.items[0].days[0].doses[0].scheduled_at = new Date(Date.now() - (3 * 60 * 60 * 1000)).toISOString();
   getPrescriptionSchedule.mockResolvedValue(data);
-
   renderPage();
 
   expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
+  expect(screen.getByText('Overdue')).toBeTruthy();
+  expect(screen.getByText(/more than 2 hours late/)).toBeTruthy();
+  expect(updateScheduleDose).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Missed' }));
   expect(updateScheduleDose).toHaveBeenCalledWith(31, 'missed');
-  expect(await screen.findByText('Missed')).toBeTruthy();
+  expect((await screen.findAllByText('Missed')).length).toBeGreaterThan(1);
+});
+
+it('leaves new reminder slots empty until the user chooses times', async () => {
+  const data = scheduleData();
+  data.items[0].status = 'needs_times';
+  data.items[0].times = [];
+  data.items[0].days = [];
+  getPrescriptionSchedule.mockResolvedValue(data);
+  renderPage();
+
+  expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
+  expect(screen.getByLabelText('Reminder 1').value).toBe('');
+  expect(screen.getByLabelText('Reminder 2').value).toBe('');
+  expect(screen.getByRole('button', { name: 'Enable reminder' }).disabled).toBe(true);
 });
 
 it('shows a retryable error', async () => {
@@ -98,6 +118,6 @@ it('shows the prescription reader action when no confirmed prescription exists',
     prescription_id: null, timezone: 'Asia/Karachi', prescriptions: [], items: [],
   });
   renderPage();
-  expect(await screen.findByRole('heading', { name: 'No confirmed prescription yet' })).toBeTruthy();
+  expect(await screen.findByRole('heading', { name: 'No schedule yet' })).toBeTruthy();
   expect(screen.getByRole('link', { name: 'Go to Prescription Reader' }).getAttribute('href')).toBe('/prescription');
 });

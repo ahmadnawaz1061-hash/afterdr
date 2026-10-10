@@ -137,9 +137,29 @@ def test_complete_mock_ai_journey(e2e_client):
     assert dashboard.json()["today"] == {
         "total_doses": 2,
         "taken": 1,
+        "missed": 0,
         "remaining": 1,
     }
+    assert dashboard.json()["next_dose"] == {
+        "medicine": "Demo Relief One",
+        "time": "23:59",
+    }
     assert dashboard.json()["recent_verifications"] == 0
+
+    missed = e2e_client.patch(
+        f"/api/schedules/{today.json()[1]['id']}",
+        json={"status": "missed"},
+    )
+    assert missed.status_code == 200
+    refreshed_dashboard = e2e_client.get("/api/dashboard")
+    assert refreshed_dashboard.status_code == 200
+    assert refreshed_dashboard.json()["today"] == {
+        "total_doses": 2,
+        "taken": 1,
+        "missed": 1,
+        "remaining": 0,
+    }
+    assert refreshed_dashboard.json()["next_dose"] is None
 
     search = e2e_client.get(
         "/api/medicines/search",

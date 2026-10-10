@@ -332,7 +332,10 @@ def regenerate_item_schedule(
         .order_by(ScheduleDose.scheduled_at)
     ).all())
     if all_doses:
-        course_start = min(dose.scheduled_at.astimezone(zone).date() for dose in all_doses)
+        earliest_scheduled_day = min(
+            dose.scheduled_at.astimezone(zone).date() for dose in all_doses
+        )
+        course_start = min(earliest_scheduled_day, current_utc.astimezone(zone).date())
     else:
         course_start = current_utc.astimezone(zone).date()
     occurrences = [value for value in _utc_occurrences(
