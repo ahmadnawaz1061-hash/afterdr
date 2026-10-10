@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import VerificationPage from './VerificationPage';
 import * as api from '../services/api';
 
@@ -18,6 +18,8 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
     vi.clearAllMocks();
   });
 
+  afterEach(cleanup);
+
   it('renders step 1 with upload zone and Pakistan DRAP badge', () => {
     render(
       <MemoryRouter>
@@ -25,10 +27,10 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Medicine Authenticity Checker')).toBeInTheDocument();
-    expect(screen.getByText('Pakistan DRAP Verified Catalog')).toBeInTheDocument();
-    expect(screen.getByText(/Step 1 — Upload Medicine Packaging Image/i)).toBeInTheDocument();
-    expect(screen.getByText(/Quick Demo Packaging Samples/i)).toBeInTheDocument();
+    expect(screen.getByText('Medicine Authenticity Checker')).toBeTruthy();
+    expect(screen.getByText('Pakistan DRAP Verified Catalog')).toBeTruthy();
+    expect(screen.getByText(/Step 1 — Upload Medicine Packaging Image/i)).toBeTruthy();
+    expect(screen.getByText(/Quick Demo Packaging Samples/i)).toBeTruthy();
   });
 
   it('loads sample packaging and transitions to review form', () => {
@@ -41,10 +43,10 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
     const sampleBtn = screen.getByRole('button', { name: /Augmentin 625mg \(DRAP Reg #012345\)/i });
     fireEvent.click(sampleBtn);
 
-    expect(screen.getByText(/Step 2 — Review & Confirm Extracted Packaging Fields/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Augmentin')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('GlaxoSmithKline Pakistan Limited')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('012345')).toBeInTheDocument();
+    expect(screen.getByText(/Step 2 — Review & Confirm Extracted Packaging Fields/i)).toBeTruthy();
+    expect(screen.getByDisplayValue('Augmentin')).toBeTruthy();
+    expect(screen.getByDisplayValue('GlaxoSmithKline Pakistan Limited')).toBeTruthy();
+    expect(screen.getByDisplayValue('012345')).toBeTruthy();
   });
 
   it('submits verification and displays authenticity assessment results', async () => {
@@ -92,14 +94,14 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
     fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(screen.getByText('Possible recall or safety alert')).toBeInTheDocument();
+      expect(screen.getByText('Possible recall or safety alert')).toBeTruthy();
     });
 
-    expect(screen.getByText(/Verification ID #501/i)).toBeInTheDocument();
-    expect(screen.getByText(/Essential Safety & Authenticity Limitation Notice/i)).toBeInTheDocument();
-    expect(screen.getByText(/CRITICAL RECALL ALERT/i)).toBeInTheDocument();
-    expect(screen.getByText(/Do NOT consume or administer this medicine/i)).toBeInTheDocument();
-    expect(screen.getByText(/Prepare DRAP Complaint Draft/i)).toBeInTheDocument();
+    expect(screen.getByText(/Verification ID #501/i)).toBeTruthy();
+    expect(screen.getByText(/Essential Safety & Authenticity Limitation Notice/i)).toBeTruthy();
+    expect(screen.getByText(/CRITICAL RECALL ALERT/i)).toBeTruthy();
+    expect(screen.getByText(/Do NOT consume or administer this medicine/i)).toBeTruthy();
+    expect(screen.getByText(/Prepare DRAP Complaint Draft/i)).toBeTruthy();
   });
 
   it('navigates to complaint reporting with verification ID when clicking draft button', async () => {
@@ -130,7 +132,7 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
     fireEvent.click(screen.getByRole('button', { name: /Verify Packaging Authenticity/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Potentially suspicious')).toBeInTheDocument();
+      expect(screen.getByText('Potentially suspicious')).toBeTruthy();
     });
 
     const reportBtn = screen.getByRole('button', { name: /Prepare DRAP Complaint Draft/i });
@@ -155,6 +157,6 @@ describe('VerificationPage — Medicine Authenticity Checker', () => {
     fireEvent.change(anomalyInput, { target: { value: 'Tamper seal broken' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Anomaly' }));
-    expect(screen.getByText('Tamper seal broken')).toBeInTheDocument();
+    expect(screen.getByText('Tamper seal broken')).toBeTruthy();
   });
 });
