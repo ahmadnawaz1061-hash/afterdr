@@ -143,6 +143,10 @@ No live registration status, stock, pricing or treatment advice is inferred.
 
 ## Deploy the backend
 
+For Render plus Netlify, use the included `render.yaml` and `netlify.toml`.
+Follow [the deployment steps](docs/deployment.md) to enter the actual hosting
+URLs and Gemini key. Netlify's generated API proxy preserves login cookies.
+
 The backend [Procfile](backend/Procfile) starts the service with:
 
 ```text
