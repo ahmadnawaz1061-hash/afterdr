@@ -56,7 +56,7 @@ export default function FileUploader({ onFileSelect, label = 'Upload an image', 
   return (
     <div className="space-y-3">
       <label htmlFor={id} className="block text-sm font-semibold text-slate-900">{label}</label>
-      <div
+      <div role="button" tabIndex={0} aria-label="File upload area, drag and drop an image or click to select" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
         className={`rounded-2xl border-2 border-dashed p-5 transition-colors sm:p-6 ${disabled ? 'border-slate-200 bg-slate-100' : dragging ? 'border-teal-600 bg-teal-50' : 'border-slate-300 bg-white'}`}
         onDragEnter={(event) => {
           event.preventDefault();
