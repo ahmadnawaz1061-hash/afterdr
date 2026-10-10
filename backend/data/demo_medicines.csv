@@ -1,0 +1,16 @@
+brand_name,active_ingredient,strength,dosage_form,route,release_type,manufacturer,registration_no,data_source
+Demo Relief One,Examplemol,500 mg,tablet,oral,immediate,Demo Labs Alpha,DEMO-001,demo_dataset
+Demo Relief Two,Examplemol,500 mg,tablet,oral,immediate,Demo Labs Beta,DEMO-002,demo_dataset
+Demo Relief Strong,Examplemol,650 mg,tablet,oral,immediate,Demo Labs Alpha,DEMO-003,demo_dataset
+Demo Relief Liquid,Examplemol,500 mg/5 mL,syrup,oral,immediate,Demo Labs Gamma,DEMO-004,demo_dataset
+Demo Relief Extended,Examplemol,500 mg,tablet,oral,extended,Demo Labs Delta,DEMO-005,demo_dataset
+Demo Calm One,Mockadine,10 mg,capsule,oral,immediate,Demo Labs Echo,DEMO-006,demo_dataset
+Demo Calm Two,Mockadine,10 mg,capsule,oral,immediate,Demo Labs Foxtrot,DEMO-007,demo_dataset
+Demo Calm Low,Mockadine,5 mg,capsule,oral,immediate,Demo Labs Echo,DEMO-008,demo_dataset
+Demo Calm Topical,Mockadine,10 mg,cream,topical,immediate,Demo Labs Golf,DEMO-009,demo_dataset
+Demo Clear One,Illustramycin,250 mg,capsule,oral,immediate,Demo Labs Hotel,DEMO-010,demo_dataset
+Demo Clear Two,Illustramycin,250 mg,capsule,oral,immediate,Demo Labs India,DEMO-011,demo_dataset
+Demo Clear Injection,Illustramycin,250 mg,injection,intramuscular,immediate,Demo Labs Juliett,DEMO-012,demo_dataset
+Demo Clear Extended,Illustramycin,250 mg,capsule,oral,extended,Demo Labs Kilo,DEMO-013,demo_dataset
+Demo Balance One,Samplepril,20 mg,tablet,oral,immediate,Demo Labs Lima,DEMO-014,demo_dataset
+Demo Balance Two,Samplepril,20 mg,tablet,oral,immediate,Demo Labs Mike,DEMO-015,demo_dataset

@@ -1,0 +1,17 @@
+.tools/
+.remote-review/
+backend/.venv/
+backend/medcare.db
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend.zip
+.env
+**/.env
+!.env.example
+!**/.env.example
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
