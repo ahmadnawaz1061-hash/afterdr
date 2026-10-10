@@ -55,16 +55,19 @@ function renderPage() {
   return render(<MemoryRouter initialEntries={['/scheduler?prescription_id=4']}><SchedulerPage /></MemoryRouter>);
 }
 
-it('loads card-based doses, edits times, creates the schedule, and marks a dose', async () => {
+it('shows the five medicine details, saves a time, and marks a dose taken', async () => {
   renderPage();
   expect(screen.getByRole('status', { name: 'Loading your schedule' })).toBeTruthy();
-  expect((await screen.findAllByRole('heading', { name: 'Course medicine' })).length).toBe(2);
-  expect(screen.getByText('0 of 1 taken today')).toBeTruthy();
-  expect(screen.getByText(/Reminders work only while this page is open/)).toBeTruthy();
-  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0');
+  expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
+  for (const label of ['Reminder', 'Status', 'Dosage', 'Frequency', 'Time']) {
+    expect(screen.getByText(label)).toBeTruthy();
+  }
+  expect(screen.getByText('Enabled')).toBeTruthy();
+  expect(screen.getByText('1 tablet')).toBeTruthy();
+  expect(screen.getByText('twice daily')).toBeTruthy();
 
   fireEvent.change(screen.getByLabelText('Reminder 1'), { target: { value: '10:00' } });
-  fireEvent.click(screen.getByRole('button', { name: /Create my schedule/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save time' }));
   expect(regenerateScheduleItem).toHaveBeenCalledWith(9, ['10:00', '21:00'], 'Asia/Karachi');
 
   fireEvent.click(screen.getByRole('button', { name: 'Taken' }));
@@ -78,14 +81,14 @@ it('shows an overdue nudge without changing the stored status', async () => {
   getPrescriptionSchedule.mockResolvedValue(data);
   renderPage();
 
-  expect((await screen.findAllByRole('heading', { name: 'Course medicine' })).length).toBe(2);
+  expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
   expect(screen.getByText('Overdue')).toBeTruthy();
   expect(screen.getByText(/more than 2 hours late/)).toBeTruthy();
   expect(updateScheduleDose).not.toHaveBeenCalled();
 
-  fireEvent.click(screen.getByRole('button', { name: 'Skip dose for Course medicine' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Missed' }));
   expect(updateScheduleDose).toHaveBeenCalledWith(31, 'missed');
-  expect(await screen.findByText('Missed')).toBeTruthy();
+  expect((await screen.findAllByText('Missed')).length).toBeGreaterThan(1);
 });
 
 it('leaves new reminder slots empty until the user chooses times', async () => {
@@ -99,7 +102,7 @@ it('leaves new reminder slots empty until the user chooses times', async () => {
   expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
   expect(screen.getByLabelText('Reminder 1').value).toBe('');
   expect(screen.getByLabelText('Reminder 2').value).toBe('');
-  expect(screen.getByRole('button', { name: /Create my schedule/ }).disabled).toBe(true);
+  expect(screen.getByRole('button', { name: 'Enable reminder' }).disabled).toBe(true);
 });
 
 it('shows a retryable error', async () => {
@@ -107,7 +110,7 @@ it('shows a retryable error', async () => {
   renderPage();
   expect((await screen.findByRole('alert')).textContent).toContain('Connection failed');
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-  expect((await screen.findAllByRole('heading', { name: 'Course medicine' })).length).toBe(2);
+  expect(await screen.findByRole('heading', { name: 'Course medicine' })).toBeTruthy();
 });
 
 it('shows the prescription reader action when no confirmed prescription exists', async () => {
