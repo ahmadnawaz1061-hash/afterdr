@@ -92,7 +92,7 @@ describe('real API contract', () => {
     const { default: api, USE_MOCKS } = await import('./api');
     expect(api).toBe(client);
     expect(USE_MOCKS).toBe(false);
-    expect(axios.create).toHaveBeenCalledWith({ baseURL: 'http://localhost:8000/api', timeout: 30000, withCredentials: true });
+    expect(axios.create).toHaveBeenCalledWith({ baseURL: '/api', timeout: 30000, withCredentials: true });
   });
 
   it('uses the configured API base URL and requires an explicit true mock flag', async () => {

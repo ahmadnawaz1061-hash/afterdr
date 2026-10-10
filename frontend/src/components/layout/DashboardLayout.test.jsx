@@ -53,7 +53,7 @@ it('returns focus to the menu button when navigation closes with Escape', () => 
 it('closes the menu and resets scroll and focus when navigating through the navbar', () => {
   renderLayout();
   fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
-  fireEvent.click(screen.getByRole('link', { name: 'MedCare AI home' }));
+  fireEvent.click(screen.getByRole('link', { name: 'After Dr home' }));
   expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Welcome');
   expect(screen.getByRole('button', { name: 'Open navigation' }).getAttribute('aria-expanded')).toBe('false');
   expect(document.activeElement).toBe(screen.getByRole('main'));

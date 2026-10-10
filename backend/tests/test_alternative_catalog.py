@@ -57,9 +57,9 @@ def test_catalog_sources_are_explicit_and_no_fictional_rows_are_present():
     assert catalog["source_checked_at"] == "2026-10-10"
     assert all(row["data_source"] == "drap_pk" for row in catalog["records"])
     assert not any(row["brand_name"].startswith("Demo") for row in catalog["records"])
-    assert len(catalog["records"]) >= 150
+    assert len(catalog["records"]) == 150
     assert len({row["registration_no"] for row in catalog["records"]}) == len(catalog["records"])
-    assert len({row["source_url"] for row in catalog["records"]}) >= 30
+    assert all(row["source_url"].startswith("https://e.dra.gov.pk/") for row in catalog["records"])
     assert all(row.get("source_composition") for row in catalog["records"][8:])
     assert not any(row["registration_no"] == "019652" for row in catalog["records"])
 
@@ -68,7 +68,8 @@ def test_search_uses_only_documented_pakistan_records(catalog_client):
     response = catalog_client.get("/api/medicines/search", params={"q": "  PARA  ", "catalog": "drap_pk"})
     assert response.status_code == 200
     records = response.json()
-    assert len(records) == 10
+    expected = [row for row in load_catalog()["records"] if "para" in row["active_ingredient"].lower() or "para" in row["brand_name"].lower()]
+    assert len(records) == min(10, len(expected))
     assert all("para" in row["active_ingredient"].lower() or "para" in row["brand_name"].lower() for row in records)
     assert all(not row["is_demo"] and row["source_url"].startswith("https://e.dra.gov.pk/") for row in records)
     assert catalog_client.get("/api/medicines/search", params={"q": "%", "catalog": "drap_pk"}).json() == []
@@ -139,3 +140,46 @@ def test_pakistan_search_requires_authentication(catalog_client):
         assert catalog_client.get("/api/medicines/search", params={"catalog": "drap_pk"}).status_code == 401
     finally:
         app.dependency_overrides[get_current_user] = user_override
+
+
+def test_startup_populates_catalog_and_restarts_without_duplicates(catalog_engine, monkeypatch):
+    import app.main as main
+    monkeypatch.delenv('IMPORT_MEDICINE_CATALOG', raising=False)
+    monkeypatch.setattr(main, 'engine', catalog_engine)
+    monkeypatch.setattr(main, 'create_db', lambda: SQLModel.metadata.create_all(catalog_engine))
+    def override_session():
+        with Session(catalog_engine) as session:
+            yield session
+    app.dependency_overrides[get_session] = override_session
+    try:
+        for _ in range(2):
+            with TestClient(app) as client:
+                response = client.get('/api/medicines/search', params={'q': 'panadlo', 'catalog': 'drap_pk'})
+                assert response.status_code == 200
+                assert response.json()[0]['brand_name'] == 'Panadol'
+                assert response.json()[0]['similar_spelling'] is True
+        with Session(catalog_engine) as session:
+            assert len(session.exec(select(Medicine)).all()) == 150
+            assert session.exec(select(Patient)).all() == []
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+
+@pytest.mark.parametrize('catalog', ['all', 'drap_pk'])
+def test_search_api_labels_typos_and_keeps_matching_by_selected_id(catalog_client, catalog):
+    params = {'q': 'panadlo', 'catalog': catalog}
+    rows = catalog_client.get('/api/medicines/search', params=params).json()
+    assert rows[0]['brand_name'] == 'Panadol' and rows[0]['similar_spelling'] is True
+    exact = catalog_client.get('/api/medicines/search', params={**params, 'q': 'Panadol'}).json()
+    assert rows[0]['id'] == exact[0]['id']
+    assert exact[0]['similar_spelling'] is False
+
+
+def test_fuzzy_pagination_and_common_brand_provenance(catalog_client):
+    params = {'q': 'glucophge', 'catalog': 'drap_pk'}
+    all_rows = catalog_client.get('/api/medicines/search', params=params).json()
+    pages = [catalog_client.get('/api/medicines/search', params={**params, 'limit': 2, 'offset': i}).json()
+             for i in range(0, len(all_rows), 2)]
+    assert [row['id'] for page in pages for row in page] == [row['id'] for row in all_rows]
+    assert all_rows and all(row['similar_spelling'] for row in all_rows)
+    assert all(row['source_search_query'] == 'Glucophage' for row in all_rows)

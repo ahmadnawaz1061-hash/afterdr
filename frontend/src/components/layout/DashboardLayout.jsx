@@ -13,7 +13,7 @@ export default function DashboardLayout() {
   const previousPath = useRef(pathname);
 
   useEffect(() => {
-    document.title = `${navigation.find((item) => item.to === pathname)?.label ?? 'Page not found'} | MedCare AI`;
+    document.title = `${navigation.find((item) => item.to === pathname)?.label ?? 'Page not found'} | After Dr`;
     // Preserve the natural tab order on arrival. Only move focus after navigation.
     if (previousPath.current !== pathname) {
       previousPath.current = pathname;

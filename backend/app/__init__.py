@@ -1,1 +1,1 @@
-"""MedCare AI backend application package."""
+"""After Dr backend application package."""

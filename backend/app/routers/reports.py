@@ -69,5 +69,5 @@ def download_report(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="medcare-report-{report_id}-draft.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="after-dr-report-{report_id}-draft.pdf"'},
     )

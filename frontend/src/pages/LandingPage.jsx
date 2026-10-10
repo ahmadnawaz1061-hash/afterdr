@@ -46,7 +46,7 @@ export default function LandingPage() {
         <div className="p-6 sm:p-10 lg:p-12">
           <p className="text-xs font-semibold tracking-[0.18em] text-teal-200 uppercase">Care beyond the consultation</p>
           <h1 id="landing-title" className="mt-5 max-w-xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">Your next step,<br />a little clearer.</h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-teal-50">Bring prescription instructions, medicine schedules, and package reviews together. MedCare AI helps you organize the everyday steps after your consultation.</p>
+          <p className="mt-5 max-w-xl text-base leading-7 text-teal-50">Bring prescription instructions, medicine schedules, and package reviews together. After Dr helps you organize the everyday steps after your consultation.</p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link to={user ? '/dashboard' : '/register'} className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl bg-white px-6 py-3 text-sm font-bold text-teal-900 hover:bg-teal-50 focus-visible:outline-white">{user ? 'Open your dashboard' : 'Create your account'} <ArrowRight size={18} aria-hidden="true" /></Link>
             <a href="#landing-features" className="inline-flex min-h-12 items-center gap-2 rounded-lg px-2 py-3 text-sm font-semibold text-white hover:underline focus-visible:outline-white">Explore the five tools <ArrowDown size={16} aria-hidden="true" /></a>

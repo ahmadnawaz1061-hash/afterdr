@@ -40,7 +40,7 @@ export default function AuthPage({ mode }) {
       <div className="w-full max-w-md">
         <Link to="/" className="mx-auto mb-7 flex w-fit items-center gap-2 rounded-lg font-bold text-slate-900">
           <span className="rounded-xl bg-teal-700 p-2 text-white"><HeartPulse size={24} aria-hidden="true" /></span>
-          <span className="text-xl">MedCare <span className="text-teal-700">AI</span></span>
+          <span className="text-xl">After <span className="text-teal-700">Dr</span></span>
         </Link>
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <h1 className="text-2xl font-bold text-slate-900">{registering ? 'Create your account' : 'Welcome back'}</h1>
@@ -68,7 +68,7 @@ export default function AuthPage({ mode }) {
             </button>
           </form>
           <p className="mt-6 text-center text-sm text-slate-600">
-            {registering ? 'Already have an account?' : 'New to MedCare AI?'}{' '}
+            {registering ? 'Already have an account?' : 'New to After Dr?'}{' '}
             <Link className="font-semibold text-teal-800 underline-offset-4 hover:underline" to={registering ? '/login' : '/register'}>
               {registering ? 'Sign in' : 'Create an account'}
             </Link>

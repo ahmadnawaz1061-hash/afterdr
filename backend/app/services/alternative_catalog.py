@@ -73,6 +73,7 @@ def provenance(medicine: Medicine) -> dict:
                 "source_url": record["source_url"],
                 "source_checked_at": record.get("source_checked_at", catalog["source_checked_at"]),
                 "formulation_source_url": record.get("formulation_source_url"),
+                "source_search_query": record.get("source_search_query"),
             }
     return {}
 

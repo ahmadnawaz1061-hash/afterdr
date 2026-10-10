@@ -306,7 +306,7 @@ def assess_authenticity(
         next_steps.extend([
             "Do not take this medicine until it has been inspected by a licensed pharmacist.",
             "Keep the original packaging, blister packs, and sales receipt intact.",
-            "Prepare a formal DRAP Suspicious Medicine Draft report using MedCare AI.",
+            "Prepare a formal DRAP Suspicious Medicine Draft report using After Dr.",
             "Report the pharmacy or distributor to DRAP's Vigilance Cell (051-9107416).",
         ])
     elif outcome == "registered_unconfirmed":

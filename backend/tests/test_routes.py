@@ -37,6 +37,10 @@ EXPECTED_OPERATIONS = {
     ("get", "/api/medicines/{medicine_id}/alternatives"),
     ("post", "/api/verifications/extract"),
     ("post", "/api/verifications"),
+    ("post", "/api/verifications/analyze"),
+    ("post", "/api/verifications/{verification_id}/reanalyze"),
+    ("get", "/api/verifications"),
+    ("get", "/api/verifications/{verification_id}"),
     ("post", "/api/reports"),
     ("get", "/api/reports/{report_id}/download"),
     ("get", "/api/dashboard"),
@@ -373,7 +377,7 @@ def test_medicine_routes_use_catalog_matching_and_limit_search(isolated_api_data
         assert len(catalog.json()) == 3
         assert set(catalog.json()[0]) == {
             "id", "brand_name", "active_ingredient", "strength", "dosage_form", "route",
-            "release_type", "manufacturer", "registration_no", "data_source", "is_demo",
+            "release_type", "manufacturer", "registration_no", "data_source", "is_demo", "similar_spelling",
         }
         assert [item["id"] for item in client.get("/api/medicines/search", params={"q": "exampleMOL"}).json()] == [1, 2]
         assert client.get("/api/medicines/search", params={"q": "no such medicine"}).json() == []
@@ -492,7 +496,7 @@ def test_report_dashboard_and_health_routes_return_data():
         assert download.headers["content-type"] == "application/pdf"
         assert download.content.startswith(b"%PDF")
         assert b"DRAFT \\227 NOT SUBMITTED" in download.content
-        assert "medcare-report-1-draft.pdf" in download.headers["content-disposition"]
+        assert "after-dr-report-1-draft.pdf" in download.headers["content-disposition"]
         assert client.get("/api/reports/999999/download").status_code == 404
         assert client.post("/api/reports", json={
             "verification_id": 999999,

@@ -62,6 +62,17 @@ it('shows loading and blocks duplicate search submissions', async () => {
   expect(screen.getByRole('button', { name: 'Search medicines' }).disabled).toBe(false);
 });
 
+it('labels spelling suggestions and compares only the product the user selects', async () => {
+  searchAlternativeMedicines.mockResolvedValue([{ ...original, similar_spelling: true }]);
+  render(<AlternativesPage />);
+  const result = await search('panadlo');
+  expect(screen.getByText(/Showing similar spellings for/).textContent).toContain('panadlo');
+  expect(getMedicineAlternatives).not.toHaveBeenCalled();
+  fireEvent.click(result);
+  expect(getMedicineAlternatives).toHaveBeenCalledWith(original.id, expect.any(Object));
+  await screen.findByRole('heading', { name: 'Provas' });
+});
+
 it('handles unavailable search records and an empty Pakistan catalog', async () => {
   searchAlternativeMedicines.mockResolvedValue([]);
   render(<AlternativesPage />);

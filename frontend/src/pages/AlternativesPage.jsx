@@ -25,6 +25,7 @@ function Source({ medicine }) {
   return <div className="space-y-1 text-xs leading-5 text-slate-600">
     <p>DRAP Pakistan &middot; Registration {medicine.registration_no}</p>
     <p>{safeLink(medicine.source_url) && <a href={medicine.source_url} target="_blank" rel="noreferrer" className="font-medium text-teal-800 underline underline-offset-4">View DRAP listing (opens a new tab)</a>}{medicine.source_checked_at && <span className="ml-2">Checked {medicine.source_checked_at}</span>}</p>
+    {medicine.source_search_query && <p>On the DRAP page, search registration {medicine.registration_no} to find this product.</p>}
     {safeLink(medicine.formulation_source_url) && <a href={medicine.formulation_source_url} target="_blank" rel="noreferrer" className="block font-medium text-teal-800 underline underline-offset-4">View formulation evidence (opens a new tab)</a>}
   </div>;
 }
@@ -175,7 +176,7 @@ export default function AlternativesPage() {
           <button disabled={!query.trim() || search.status === 'loading'} className="min-h-11 flex-1 rounded-xl bg-teal-800 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-900 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 sm:flex-none">Search medicines</button>
           <button type="button" disabled={search.status === 'loading'} onClick={() => { setQuery(''); runSearch(''); }} className="button-secondary flex-1 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none">Browse catalog</button>
         </div>
-        <p id="search-hint" className="mt-2 text-xs leading-5 text-slate-500">Match the strength and form on your prescription. DRAP snapshot; current registration and stock are not verified.</p>
+        <p id="search-hint" className="mt-2 text-xs leading-5 text-slate-500">Search by brand or ingredient; small spelling mistakes are supported. Match the strength and form on your prescription. DRAP snapshot; current registration and stock are not verified.</p>
       </form>
     </section>
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
@@ -185,6 +186,7 @@ export default function AlternativesPage() {
         {search.status === 'loading' && <div className="px-4"><CompactLoading>Searching the catalog...</CompactLoading></div>}
         {search.status === 'error' && <div className="px-4 pb-4"><ErrorMessage title="Could not search medicines" error={search.error} message={search.error?.response?.status === 401 ? 'Your session has expired. Sign in again to use the catalog.' : search.error?.message || 'Check your connection and try again.'} onRetry={() => runSearch(search.term)} /></div>}
         {search.status === 'empty' && <div className="px-4 py-6" role="status"><h3 className="text-sm font-semibold text-slate-900">No catalog records found</h3><p className="mt-2 text-xs leading-5 text-slate-600">{search.term ? 'Check the spelling or try the active ingredient. A missing record does not mean the medicine is unregistered.' : 'No Pakistan catalog records are available yet. Ask your project team to load the documented DRAP catalog.'}</p></div>}
+        {search.status === 'success' && search.records.some((medicine) => medicine.similar_spelling) && <p role="status" className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">Showing similar spellings for “{search.term}”. Check the medicine name, strength and form before selecting.</p>}
         {search.status === 'success' && <div role="region" aria-label="Scrollable medicine results" tabIndex={0} className="max-h-72 overflow-y-auto overscroll-contain focus-visible:outline-offset-[-3px] lg:max-h-[26rem]">
           <ul className="divide-y divide-slate-100">{search.records.map((medicine) => <li key={medicine.id}>
             <button type="button" aria-pressed={original?.id === medicine.id} onClick={() => selectMedicine(medicine)} disabled={original?.id === medicine.id && comparison.status === 'loading'} aria-label={`Compare alternatives for ${medicine.brand_name}`} className={`flex min-h-20 w-full items-center gap-3 px-4 py-3 text-left transition-colors focus-visible:outline-offset-[-3px] disabled:cursor-wait ${original?.id === medicine.id ? 'border-l-[3px] border-teal-700 bg-teal-50' : 'border-l-[3px] border-transparent hover:bg-slate-50'}`}>
