@@ -1,5 +1,5 @@
 import axios from "axios";
-import { createDemoTodaySchedule, demoCatalog, demoPrescription } from "../mocks/demoData";
+import { createDemoTodaySchedule, demoCatalog, demoPrescription, demoPackageExtraction, demoVerificationResult } from "../mocks/demoData";
 
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
 
@@ -157,6 +157,24 @@ export async function searchMedicine(query) {
   }
 
   const response = await api.get("/medicines/search", { params: { q: query } });
+  return response.data;
+}
+
+export async function extractPackage(file) {
+  if (USE_MOCKS) return mockResponse(demoPackageExtraction);
+
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await api.post("/verifications/extract", formData, {
+    timeout: 60000,
+  });
+  return response.data;
+}
+
+export async function verifyPackage(payload) {
+  if (USE_MOCKS) return mockResponse(demoVerificationResult);
+
+  const response = await api.post("/verifications", payload);
   return response.data;
 }
 

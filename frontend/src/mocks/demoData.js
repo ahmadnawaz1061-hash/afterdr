@@ -112,13 +112,19 @@ export function createDemoTodaySchedule(now = new Date()) {
 export const demoTodaySchedule = createDemoTodaySchedule();
 
 export const demoPackageExtraction = {
-  brand_name: 'Demo Medicine A',
-  manufacturer: 'Demo Manufacturer B',
-  registration_number: null,
-  batch_number: null,
-  expiry_date_text: null,
-  strength: '500 mg',
+  brand_name: 'Augmentin',
+  active_ingredient: 'Amoxicillin + Clavulanic Acid',
+  manufacturer: 'GlaxoSmithKline Pakistan Limited',
+  registration_number: '012345',
+  batch_number: 'PK-AUG-991',
+  mfg_date_text: 'JAN 2024',
+  expiry_date_text: 'DEC 2028',
+  strength: '625 mg',
   dosage_form: 'tablet',
+  barcode_or_qr: '8964000123456',
+  visual_packaging_flags: [],
+  image_quality_issues: [],
+  altered_label_flags: [],
   needs_review: true,
   is_demo: true,
 };
@@ -137,6 +143,29 @@ export const demoVerificationResult = {
   source: 'demo_dataset',
   limitations: 'A record match does not prove that a physical package is authentic. This check only compares reviewed fields with the available reference data.',
   is_demo: true,
+  outcome: 'potentially_suspicious',
+  outcome_label: 'Potentially suspicious',
+  summary_message: 'Manufacturer differs from the registered DRAP manufacturer entry.',
+  discrepancies: ['Manufacturer differs from demo reference entry'],
+  evidence: [
+    {
+      category: 'regulatory_mismatch',
+      source: 'DRAP Registration Comparison',
+      detail: 'Manufacturer differs from demo reference entry',
+      is_critical: true,
+      source_url: 'https://www.dra.gov.pk/',
+    },
+  ],
+  recommended_next_steps: [
+    'Do not consume this medicine until checked by a licensed pharmacist.',
+    'Keep the original packaging and receipt intact.',
+    'Prepare a draft complaint for the Drug Regulatory Authority of Pakistan.',
+  ],
+  source_links: [
+    { title: 'Drug Regulatory Authority of Pakistan (DRAP)', url: 'https://www.dra.gov.pk/' },
+    { title: 'DRAP Safety Alerts & Recalls', url: 'https://www.dra.gov.pk/safety-alerts/' },
+  ],
+  assessed_at: '2026-10-10T12:00:00Z',
 };
 
 export const demoData = {

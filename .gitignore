@@ -2,6 +2,7 @@
 .remote-review/
 backend/.venv/
 backend/medcare.db
+medcare.db
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/

@@ -42,11 +42,15 @@ class VerificationSaveError(VerificationServiceError):
     """Raised after a verification transaction is rolled back."""
 
 
+from app.services.authenticity import AuthenticityAssessment, assess_authenticity
+
+
 @dataclass(frozen=True)
 class VerificationResult:
     verification: Verification
     findings: tuple[VerificationFinding, ...]
     source: str
+    assessment: AuthenticityAssessment | None = None
 
 
 def extract_package_draft(image_bytes: bytes) -> tuple[PackageExtraction, bool]:
@@ -204,16 +208,44 @@ def verify_package(
 
     compared = [finding for finding in findings[:4] if finding.result != "not_available"]
     has_conflict = any(finding.result == "mismatch" for finding in findings)
+
+    assessment = assess_authenticity(
+        brand_name=payload.brand_name,
+        active_ingredient=payload.active_ingredient,
+        strength=payload.strength,
+        dosage_form=payload.dosage_form,
+        manufacturer=payload.manufacturer,
+        registration_number=payload.registration_number,
+        batch_number=payload.batch_number,
+        mfg_date_text=payload.mfg_date_text,
+        expiry_date_text=payload.expiry_date_text,
+        barcode_or_qr=payload.barcode_or_qr,
+        altered_label_flags=payload.altered_label_flags,
+        image_quality_issues=payload.image_quality_issues,
+        visual_packaging_flags=payload.visual_packaging_flags,
+        today=today or date.today(),
+    )
+
     if reference is None:
-        status = "unable_to_verify"
-    elif has_conflict:
+        if assessment.is_recalled or assessment.is_expired or len(payload.altered_label_flags) > 0:
+            status = "inconsistent_information"
+            source = "DRAP Rapid Alert / Safety Notice"
+        elif assessment.outcome in ("verified_authoritative", "registered_unconfirmed"):
+            status = "record_match"
+            source = "DRAP (Drug Regulatory Authority of Pakistan)"
+        else:
+            status = "unable_to_verify"
+            source = "demo_dataset"
+    elif has_conflict or assessment.is_recalled or len(payload.altered_label_flags) > 0:
         status = "inconsistent_information"
+        source = reference.data_source
     elif len(compared) < MIN_CATALOG_COMPARISONS:
         status = "unable_to_verify"
+        source = reference.data_source
     else:
         status = "record_match"
+        source = reference.data_source
 
-    source = reference.data_source if reference is not None else "demo_dataset"
     verification = Verification(
         patient_id=payload.patient_id,
         medicine_id=reference.id if reference is not None else None,
@@ -234,4 +266,5 @@ def verify_package(
         verification=verification,
         findings=tuple(findings),
         source=source,
+        assessment=assessment,
     )
