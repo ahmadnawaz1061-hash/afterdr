@@ -72,11 +72,22 @@ async def extract_package(
             detail="Package extraction is temporarily unavailable",
         ) from exc
 
+    valid_fields = set(PackageExtractionResponse.model_fields.keys())
+    data = {k: v for k, v in extraction.model_dump().items() if k in valid_fields}
     return PackageExtractionResponse(
-        **extraction.model_dump(),
+        **data,
         is_demo=simulated,
         simulated=simulated,
     )
+
+
+from app.schemas import (
+    EvidenceResponse,
+    PackageExtractionResponse,
+    SourceLinkResponse,
+    VerificationCreateRequest,
+    VerificationResponse,
+)
 
 
 @router.post("", response_model=VerificationResponse, status_code=201)
@@ -95,6 +106,7 @@ def create_verification(
     except VerificationSaveError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    assessment = result.assessment
     return VerificationResponse(
         verification_id=result.verification.id,
         status=result.verification.status,
@@ -103,4 +115,24 @@ def create_verification(
         source=result.source,
         limitations=LIMITATIONS,
         is_demo=result.source == "demo_dataset",
+        outcome=assessment.outcome if assessment else "registered_unconfirmed",
+        outcome_label=assessment.outcome_label if assessment else "Registered product found",
+        summary_message=assessment.summary_message if assessment else "",
+        discrepancies=list(assessment.discrepancies) if assessment else [],
+        evidence=[
+            EvidenceResponse(
+                category=e.category,
+                source=e.source,
+                detail=e.detail,
+                is_critical=e.is_critical,
+                source_url=e.source_url,
+            )
+            for e in (assessment.evidence if assessment else [])
+        ],
+        recommended_next_steps=list(assessment.recommended_next_steps) if assessment else [],
+        source_links=[
+            SourceLinkResponse(title=s["title"], url=s["url"])
+            for s in (assessment.source_links if assessment else [])
+        ],
+        assessed_at=assessment.assessed_at if assessment else "",
     )

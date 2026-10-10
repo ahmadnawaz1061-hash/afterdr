@@ -277,18 +277,37 @@ class VerificationCreateRequest(ContractModel):
     patient_id: int = Field(default=1, ge=1)
     medicine_id: int | None = Field(default=None, ge=1)
     brand_name: str | None = "Demo Medicine A"
+    active_ingredient: str | None = None
     manufacturer: str | None = "Demo Manufacturer B"
     registration_number: str | None = None
     batch_number: str | None = None
+    mfg_date_text: str | None = None
     expiry_date_text: str | None = None
     strength: str | None = "500 mg"
     dosage_form: str | None = "tablet"
+    barcode_or_qr: str | None = None
+    visual_packaging_flags: list[str] = Field(default_factory=list)
+    image_quality_issues: list[str] = Field(default_factory=list)
+    altered_label_flags: list[str] = Field(default_factory=list)
 
 
 class VerificationFinding(ContractModel):
     field: str
     result: Literal["match", "mismatch", "not_available"]
     message: str
+
+
+class EvidenceResponse(ContractModel):
+    category: str
+    source: str
+    detail: str
+    is_critical: bool = False
+    source_url: str | None = None
+
+
+class SourceLinkResponse(ContractModel):
+    title: str
+    url: str
 
 
 class VerificationResponse(ContractModel):
@@ -299,6 +318,27 @@ class VerificationResponse(ContractModel):
     source: str = "demo_dataset"
     limitations: str
     is_demo: bool = True
+    # Pakistan Authenticity Checker Extensions
+    outcome: str = "registered_unconfirmed"
+    outcome_label: str = "Registered product found — package authenticity unconfirmed"
+    summary_message: str = ""
+    discrepancies: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceResponse] = Field(default_factory=list)
+    recommended_next_steps: list[str] = Field(default_factory=list)
+    source_links: list[SourceLinkResponse] = Field(default_factory=list)
+    assessed_at: str = ""
+
+
+class ProviderStatusItem(ContractModel):
+    name: str
+    provider_type: Literal["regulatory", "manufacturer"]
+    status: Literal["operational", "mocked", "unavailable", "unconfigured"]
+    description: str
+    country: str = "Pakistan"
+
+
+class ProviderStatusResponse(ContractModel):
+    providers: list[ProviderStatusItem]
 
 
 class ReportCreateRequest(ContractModel):
